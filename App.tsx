@@ -20,6 +20,8 @@ import ReportsScreen from './src/screens/ReportsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { colors } from './src/theme';
 import { DESKTOP_BP } from './src/components/ui';
+import { AuthProvider } from './src/auth/AuthContext';
+import LoginModal from './src/auth/LoginModal';
 
 const Drawer = createDrawerNavigator();
 
@@ -30,34 +32,39 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          <Drawer.Navigator
-            initialRouteName="Dashboard"
-            drawerContent={(props) => <DrawerContent {...props} />}
-            screenOptions={{
-              headerShown: false,
-              // Permanent sidebar on desktop (like the Figma design), slide-in drawer on mobile
-              drawerType: isDesktop ? 'permanent' : 'front',
-              drawerStyle: {
-                width: isDesktop ? 256 : 290,
-                backgroundColor: colors.sidebarBg,
-                borderRightWidth: 0,
-              },
-              sceneStyle: { backgroundColor: colors.bg },
-            }}
-          >
-            <Drawer.Screen name="Dashboard" component={DashboardScreen} />
-            <Drawer.Screen name="Robot" component={RobotScreen} />
-            <Drawer.Screen name="Crops" component={CropsScreen} />
-            <Drawer.Screen name="AIScan" component={AIScanScreen} />
-            <Drawer.Screen name="Location" component={LocationScreen} />
-            <Drawer.Screen name="Analytics" component={AnalyticsScreen} />
-            <Drawer.Screen name="Alerts" component={AlertsScreen} />
-            <Drawer.Screen name="Reports" component={ReportsScreen} />
-            <Drawer.Screen name="Settings" component={SettingsScreen} />
-          </Drawer.Navigator>
-        </NavigationContainer>
+        {/* App opens UNAUTHORIZED: LoginModal blocks until /auth/login succeeds,
+            then the websocket connects with the received token. */}
+        <AuthProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            <Drawer.Navigator
+              initialRouteName="Dashboard"
+              drawerContent={(props) => <DrawerContent {...props} />}
+              screenOptions={{
+                headerShown: false,
+                // Permanent sidebar on desktop (like the Figma design), slide-in drawer on mobile
+                drawerType: isDesktop ? 'permanent' : 'front',
+                drawerStyle: {
+                  width: isDesktop ? 256 : 290,
+                  backgroundColor: colors.sidebarBg,
+                  borderRightWidth: 0,
+                },
+                sceneStyle: { backgroundColor: colors.bg },
+              }}
+            >
+              <Drawer.Screen name="Dashboard" component={DashboardScreen} />
+              <Drawer.Screen name="Robot" component={RobotScreen} />
+              <Drawer.Screen name="Crops" component={CropsScreen} />
+              <Drawer.Screen name="AIScan" component={AIScanScreen} />
+              <Drawer.Screen name="Location" component={LocationScreen} />
+              <Drawer.Screen name="Analytics" component={AnalyticsScreen} />
+              <Drawer.Screen name="Alerts" component={AlertsScreen} />
+              <Drawer.Screen name="Reports" component={ReportsScreen} />
+              <Drawer.Screen name="Settings" component={SettingsScreen} />
+            </Drawer.Navigator>
+          </NavigationContainer>
+          <LoginModal />
+        </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
