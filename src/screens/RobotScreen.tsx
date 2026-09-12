@@ -6,6 +6,7 @@ import { Card, SectionTitle, Badge, IconBox, Row, PillButton, ProgressBar, Page,
 import { LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
 import { emitMessage } from '../scripts/Websocket';
+import { useRealtime } from '../realtime/RealtimeContext';
 
 const KPIS = [
   {
@@ -56,7 +57,14 @@ const DIAGNOSTICS = [
   { label: 'LiDAR Latency', value: '12 ms', note: 'Optimal', noteClass: 'text-blue-600' },
 ];
 
+function fmtMinutes(min?: number): string {
+  if (min == null) return '—';
+  return `Est. ${Math.floor(min / 60)}h ${min % 60}m remaining`;
+}
+
 export default function RobotScreen() {
+  const { telemetry, battery, status, location, isDemo } = useRealtime();
+
   const handleStartRobot = () => {
     emitMessage('control_message', {
       action: 'stop',
@@ -64,6 +72,54 @@ export default function RobotScreen() {
       timestamp: new Date()
     });
   };
+
+  const online = status?.state != null && status.state !== 'offline' && status.state !== 'fault';
+  const fault = status?.state === 'fault';
+
+  // Live KPI values (fall back to the static defaults until data arrives)
+  const kpis = KPIS.map((k) => {
+    switch (k.label) {
+      case 'Battery & Solar':
+        return battery
+          ? {
+              ...k,
+              value: `${battery.level}%`,
+              sub: battery.solarWatts != null ? `+${battery.solarWatts}W Solar` : k.sub,
+              note: fmtMinutes(battery.minutesRemaining),
+            }
+          : k;
+      case 'Speed & Precision':
+        return telemetry
+          ? {
+              ...k,
+              value: `${telemetry.speed.toFixed(1)} m/s`,
+              sub: location ? `${location.satellites} satellites locked` : k.sub,
+            }
+          : k;
+      case 'Sensors & AI':
+        return location ? { ...k, value: `${location.satellites} sats`, sub: 'GNSS & Ultrasonic', note: 'Operational' } : k;
+      case "Today's Progress":
+        return telemetry?.distanceKm != null
+          ? {
+              ...k,
+              value: `${telemetry.distanceKm.toFixed(1)} km`,
+              sub:
+                telemetry.rowsDone != null && telemetry.rowsTotal != null
+                  ? `${telemetry.rowsDone} of ${telemetry.rowsTotal} Rows Scanned`
+                  : k.sub,
+              note: telemetry.routeProgress != null ? `${telemetry.routeProgress}% route complete` : k.note,
+            }
+          : k;
+      default:
+        return k;
+    }
+  });
+
+  const progress = telemetry?.routeProgress ?? 78;
+  const rowsLabel =
+    telemetry?.rowsDone != null && telemetry?.rowsTotal != null
+      ? `${telemetry.rowsDone} of ${telemetry.rowsTotal} Rows Scanned`
+      : '14 of 18 Rows Scanned';
 
 
   return (
@@ -79,9 +135,12 @@ export default function RobotScreen() {
         </Text>
 
         <Row className="mt-3 gap-2.5">
-          <Badge label="1 Online" className="bg-brand-50" textClassName="text-brand-700" dotClassName="bg-brand-500" />
-          <Badge label="0 Idle" className="bg-slate-100" textClassName="text-slate-600" dotClassName="bg-slate-400" />
-          <Badge label="0 Fault" className="bg-rose-100" textClassName="text-rose-600" dotClassName="bg-rose-500" />
+          <Badge label={online ? '1 Online' : '0 Online'} className="bg-brand-50" textClassName="text-brand-700" dotClassName="bg-brand-500" />
+          <Badge label={status?.state === 'idle' ? '1 Idle' : '0 Idle'} className="bg-slate-100" textClassName="text-slate-600" dotClassName="bg-slate-400" />
+          <Badge label={fault ? '1 Fault' : '0 Fault'} className="bg-rose-100" textClassName="text-rose-600" dotClassName="bg-rose-500" />
+          {isDemo && (
+            <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />
+          )}
         </Row>
 
         <Row className="mt-4 gap-2.5 lg:max-w-[560px]">
@@ -93,13 +152,20 @@ export default function RobotScreen() {
         <Card className="mt-5">
           <Row className="justify-between">
             <SectionTitle>ACTIVE UNIT</SectionTitle>
-            <Badge label="ONLINE" className="bg-brand-50" textClassName="text-brand-700" dotClassName="bg-brand-500" />
+            <Badge
+              label={online ? 'ONLINE' : fault ? 'FAULT' : status ? 'OFFLINE' : 'WAITING'}
+              className={online ? 'bg-brand-50' : fault ? 'bg-rose-100' : 'bg-slate-100'}
+              textClassName={online ? 'text-brand-700' : fault ? 'text-rose-600' : 'text-slate-600'}
+              dotClassName={online ? 'bg-brand-500' : fault ? 'bg-rose-500' : 'bg-slate-400'}
+            />
           </Row>
           <Row className="mt-3">
             <Image source={require('../../assets/images/rover-alpha.jpg')} className="w-12 h-12 rounded-xl bg-slate-100" />
             <View className="ml-3">
               <Text className="text-[15px] font-extrabold text-slate-900">Rover Alpha-01</Text>
-              <Text className="text-xs text-brand-700 font-semibold mt-0.5">Patrolling • Row #14</Text>
+              <Text className="text-xs text-brand-700 font-semibold mt-0.5">
+                {status?.message ?? 'Patrolling • Row #14'}
+              </Text>
             </View>
           </Row>
           <Image
@@ -108,14 +174,18 @@ export default function RobotScreen() {
             resizeMode="cover"
           />
           <Text className="text-[11px] font-bold text-slate-500 mt-2">
-            Firmware OS v4.8.2-AgOS • Hardware SN: ROV-2026-X9
+            Firmware OS {status?.firmware ?? 'v4.8.2-AgOS'} • Hardware SN: ROV-2026-X9
           </Text>
-          <Text className="text-[11px] font-bold text-slate-400 mt-1">HDG 042° NE • Pitch +1.4°</Text>
+          <Text className="text-[11px] font-bold text-slate-400 mt-1">
+            {telemetry
+              ? `HDG ${String(telemetry.heading).padStart(3, '0')}° • Pitch ${telemetry.pitch != null ? (telemetry.pitch >= 0 ? '+' : '') + telemetry.pitch : '—'}°`
+              : 'HDG 042° NE • Pitch +1.4°'}
+          </Text>
         </Card>
 
         {/* KPI cards */}
         <View className="flex-row flex-wrap gap-3 mt-4">
-          {KPIS.map((k) => (
+          {kpis.map((k) => (
             <Card key={k.label} className="w-[47.8%] lg:w-[23%] grow">
               <IconBox className={k.iconBg} size={36}>{k.icon}</IconBox>
               <Text className="text-[11px] font-bold text-slate-500 mt-2.5">{k.label}</Text>
@@ -163,11 +233,11 @@ export default function RobotScreen() {
         <Card className="mt-4">
           <SectionTitle>TODAY'S MISSION PROGRESS</SectionTitle>
           <Row className="justify-between mt-3">
-            <Text className="text-xs font-bold text-slate-600">14 of 18 Rows Scanned</Text>
-            <Text className="text-xs font-extrabold text-brand-700">78%</Text>
+            <Text className="text-xs font-bold text-slate-600">{rowsLabel}</Text>
+            <Text className="text-xs font-extrabold text-brand-700">{progress}%</Text>
           </Row>
           <View className="mt-2">
-            <ProgressBar value={78} barClassName="bg-brand-500" />
+            <ProgressBar value={progress} barClassName="bg-brand-500" />
           </View>
         </Card>
 

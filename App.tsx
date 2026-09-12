@@ -22,6 +22,7 @@ import { colors } from './src/theme';
 import { DESKTOP_BP } from './src/components/ui';
 import { AuthProvider } from './src/auth/AuthContext';
 import LoginModal from './src/auth/LoginModal';
+import { RealtimeProvider } from './src/realtime/RealtimeContext';
 
 const Drawer = createDrawerNavigator();
 
@@ -37,6 +38,7 @@ export default function App() {
         <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaProvider>
                 <AuthProvider>
+                    <RealtimeProvider>
                     <NavigationContainer>
                         <StatusBar style="dark" />
                         <Drawer.Navigator
@@ -64,6 +66,7 @@ export default function App() {
                             <Drawer.Screen name="Settings" component={SettingsScreen} />
                         </Drawer.Navigator>
                     </NavigationContainer>
+                    </RealtimeProvider>
                     <LoginModal />
                 </AuthProvider>
             </SafeAreaProvider>
