@@ -10,11 +10,10 @@ let socket: Socket | null = null;
 export const connectSocket = (serverUrl: string, token: string): Socket => {
     if (!socket) {
         socket = io(serverUrl, {
-            // Long-polling හරහා පළමුව සම්බන්ධ වී පසුව WebSocket වෙත මාරු වීමට ඉඩ හරින්න
             transports: ['polling', 'websocket'],
             auth: {
-                role: 'authorized', // සර්වර් එකේ 'authorized' role එකට මැච් වන ලෙස 'role' යොදන්න
-                token,              // token from /auth/login — server should validate this
+                role: 'authorized',
+                token,
             },
             autoConnect: true,
         });
