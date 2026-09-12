@@ -261,7 +261,7 @@ Since this project is still ongoing, here's roughly what's done and what's next:
 
 **Group 01 — SLIIT, BSc (Hons) in Information Technology (IT Late Intake July, Kurunegala)**
 
-Maintained and written by **Hansaka (Team Leader)**.
+Maintained and written by **Hansaka (Alexainc)**.
 
 | Role                | Member                                                                                                                    |
 | ------------------- |---------------------------------------------------------------------------------------------------------------------------|
