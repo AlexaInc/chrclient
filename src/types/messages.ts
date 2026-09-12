@@ -135,6 +135,10 @@ const KNOWN_TYPES: MessageType[] = [
  * Validate raw socket data into a typed envelope.
  * Accepts an object or a JSON string; returns null for anything malformed
  * or with an unknown Type (logged so new server kinds are easy to spot).
+ *
+ * Also unwraps relay framing — some servers wrap the envelope as
+ * `{ event: { Type, Message }, sender: "<socketId>" }`; the inner `event`
+ * object is used in that case.
  */
 export function parseEnvelope(raw: unknown): RealtimeEnvelope | null {
   let data: any = raw;
@@ -146,6 +150,13 @@ export function parseEnvelope(raw: unknown): RealtimeEnvelope | null {
     }
   }
   if (!data || typeof data !== 'object') return null;
+
+  // Unwrap { event: {...}, sender: "..." } relay framing
+  const inner = data.event ?? data.Event;
+  if (inner && typeof inner === 'object' && (inner.Type ?? inner.type) != null) {
+    data = inner;
+  }
+
   const type = data.Type ?? data.type;
   const message = data.Message ?? data.message;
   if (typeof type !== 'string' || !message || typeof message !== 'object') {
