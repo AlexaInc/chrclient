@@ -6,7 +6,7 @@ import { Card, SectionTitle, Badge, IconBox, Row, Page, CardRail, Grid, GridItem
 import { Sparkline, LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
 import FieldMapCard from "../components/FieldMapcard";
-
+import { useRealtime } from '../realtime/RealtimeContext';
 
 const STATS = [
   {
@@ -93,8 +93,58 @@ const SUMMARY = [
   { label: 'Last Sync', value: '10:35 AM', iconBg: 'bg-sky-100', icon: <Feather name="refresh-cw" size={15} color={colors.sky600} /> },
 ];
 
+function timeAgo(ts: number | null): string {
+  if (!ts) return '—';
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 5) return 'Just now';
+  if (s < 60) return `${s}s ago`;
+  return `${Math.round(s / 60)}m ago`;
+}
+
 export default function DashboardScreen() {
   const isDesktop = useIsDesktop();
+  const { sensors, battery, status, location, alerts, lastUpdated, isDemo } = useRealtime();
+
+  // Live values (fall back to placeholders until the first message arrives)
+  const stats = STATS.map((s) => {
+    switch (s.label) {
+      case 'Crop Health':
+        return sensors?.cropHealth != null ? { ...s, value: `${sensors.cropHealth}%` } : s;
+      case 'Soil Moisture':
+        return sensors?.soilMoisture != null ? { ...s, value: `${sensors.soilMoisture}%` } : s;
+      case 'Temperature':
+        return sensors?.temperature != null ? { ...s, value: `${sensors.temperature}°C` } : s;
+      case 'Pest Alerts':
+        return sensors?.pestAlerts != null
+          ? { ...s, value: String(sensors.pestAlerts), status: sensors.pestAlerts > 3 ? 'High Risk' : 'Low Risk' }
+          : s;
+      case 'Location':
+        return location ? { ...s, value: 'Field A', status: 'Live GPS' } : s;
+      default:
+        return s;
+    }
+  });
+
+  const pestCount = sensors?.pestAlerts ?? 2;
+  const batteryPct = battery?.level;
+  const robotState = status?.state;
+  const robotOnline = robotState != null && robotState !== 'offline' && robotState !== 'fault';
+
+  // Recent activity: live alerts when available, otherwise the static list
+  const activity = alerts.length
+    ? alerts.slice(0, 3).map((a) => ({
+        title: a.title,
+        sub: a.description ?? '',
+        time: timeAgo(a.receivedAt),
+        iconBg: a.severity === 'critical' ? 'bg-rose-100' : a.severity === 'warning' ? 'bg-amber-100' : 'bg-brand-100',
+        icon:
+          a.severity === 'info' ? (
+            <MaterialCommunityIcons name="leaf" size={16} color={colors.emerald600} />
+          ) : (
+            <Feather name="alert-triangle" size={15} color={a.severity === 'critical' ? colors.rose600 : colors.amber600} />
+          ),
+      }))
+    : ACTIVITY;
 
   return (
     <View className="flex-1 bg-surface">
@@ -104,7 +154,9 @@ export default function DashboardScreen() {
         <View className={isDesktop ? 'flex-row items-center justify-between' : ''}>
           <View>
             <Text className="text-2xl font-extrabold text-slate-900">Welcome back! 👋</Text>
-            <Text className="text-[13px] font-bold text-brand-700 mt-1">AI Smart Crop Monitoring System</Text>
+            <Text className="text-[13px] font-bold text-brand-700 mt-1">
+              AI Smart Crop Monitoring System{isDemo ? '  •  DEMO MODE (simulated data)' : ''}
+            </Text>
           </View>
           <Row className={`self-start bg-white border border-slate-200 rounded-lg px-3 py-1.5 ${isDesktop ? '' : 'mt-2'}`}>
             <Text className="text-xs text-slate-400">Date: </Text>
@@ -115,7 +167,7 @@ export default function DashboardScreen() {
 
         {/* KPI cards: rail on mobile, 5-across grid on desktop */}
         <CardRail className="mt-4">
-          {STATS.map((s) => (
+          {stats.map((s) => (
             <Card key={s.label} className="w-[175px] lg:w-auto lg:flex-1 lg:min-w-[180px]">
               <Row>
                 <IconBox className={s.iconBg}>{s.icon}</IconBox>
@@ -138,7 +190,12 @@ export default function DashboardScreen() {
             <Card className="flex-1">
               <Row className="justify-between">
                 <SectionTitle>ROBOT STATUS</SectionTitle>
-                <Badge label="ONLINE" className="bg-brand-50" textClassName="text-brand-700" dotClassName="bg-brand-500" />
+                <Badge
+                  label={robotOnline ? 'ONLINE' : robotState === 'fault' ? 'FAULT' : status ? 'OFFLINE' : 'WAITING'}
+                  className={robotOnline ? 'bg-brand-50' : 'bg-slate-100'}
+                  textClassName={robotOnline ? 'text-brand-700' : 'text-slate-600'}
+                  dotClassName={robotOnline ? 'bg-brand-500' : 'bg-slate-400'}
+                />
               </Row>
               <Image
                 source={require('../../assets/images/rover.jpg')}
@@ -149,8 +206,12 @@ export default function DashboardScreen() {
                 <View>
                   <Text className="text-[10px] font-extrabold text-slate-400">BATTERY</Text>
                   <Row className="mt-1">
-                    <MaterialCommunityIcons name="battery-80" size={18} color={colors.emerald500} />
-                    <Text className="text-xs font-extrabold text-slate-800"> 88%</Text>
+                    <MaterialCommunityIcons
+                      name={batteryPct == null ? 'battery-unknown' : batteryPct > 60 ? 'battery-80' : batteryPct > 30 ? 'battery-50' : 'battery-20'}
+                      size={18}
+                      color={batteryPct != null && batteryPct <= 30 ? colors.rose600 : colors.emerald500}
+                    />
+                    <Text className="text-xs font-extrabold text-slate-800"> {batteryPct != null ? `${batteryPct}%` : '—'}</Text>
                   </Row>
                 </View>
                 <View>
@@ -162,7 +223,9 @@ export default function DashboardScreen() {
                 </View>
                 <View>
                   <Text className="text-[10px] font-extrabold text-slate-400">STATUS</Text>
-                  <Text className="text-xs font-extrabold text-brand-600 mt-1">Patrolling</Text>
+                  <Text className="text-xs font-extrabold text-brand-600 mt-1">
+                    {status?.state ? status.state.charAt(0).toUpperCase() + status.state.slice(1) : '—'}
+                  </Text>
                 </View>
               </Row>
             </Card>
@@ -178,8 +241,8 @@ export default function DashboardScreen() {
                   <MaterialCommunityIcons name="bug-outline" size={30} color={colors.purple700} />
                 </IconBox>
                 <View>
-                  <Text className="text-3xl font-extrabold text-slate-900">2</Text>
-                  <Text className="text-[11px] font-bold text-slate-500">Low Risk</Text>
+                  <Text className="text-3xl font-extrabold text-slate-900">{pestCount}</Text>
+                  <Text className="text-[11px] font-bold text-slate-500">{pestCount > 3 ? 'High Risk' : 'Low Risk'}</Text>
                 </View>
               </Row>
               <TouchableOpacity
@@ -236,8 +299,8 @@ export default function DashboardScreen() {
             <Card className="flex-1">
               <SectionTitle>RECENT ACTIVITY</SectionTitle>
               <View className="mt-2">
-                {ACTIVITY.map((a, i) => (
-                  <Row key={a.title} className={`py-3 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
+                {activity.map((a, i) => (
+                  <Row key={`${a.title}-${i}`} className={`py-3 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
                     <IconBox className={a.iconBg} size={36}>{a.icon}</IconBox>
                     <View className="flex-1 ml-3">
                       <Text className="text-xs font-extrabold text-slate-800">{a.title}</Text>
@@ -259,7 +322,9 @@ export default function DashboardScreen() {
         <Card className="mt-4">
           <SectionTitle>QUICK SUMMARY</SectionTitle>
           <View className={isDesktop ? 'mt-3 flex-row flex-wrap gap-6' : 'mt-3 gap-3.5'}>
-            {SUMMARY.map((s) => (
+            {SUMMARY.map((s) =>
+              s.label === 'Last Sync' && lastUpdated ? { ...s, value: timeAgo(lastUpdated) } : s,
+            ).map((s) => (
               <Row key={s.label} className={isDesktop ? 'flex-1 min-w-[150px]' : ''}>
                 <IconBox className={s.iconBg} size={36}>{s.icon}</IconBox>
                 <View className="ml-3">

@@ -47,15 +47,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         nonce: hashValue
       };
 
-      const res = (username=='demo' && password =='demo') ? {
-        ok:true,
-        status: 200,
-        data:{        "token": "demo",
-          "user": {
-            "username": "demo",
-            "role": "demo"
-          }}
-      }: await fetch(`${SERVER_URL}/auth/login`, {
+      // demo/demo — offline demo mode: no server call, no socket.
+      // RealtimeContext detects username 'demo' and feeds simulated data.
+      const isDemoLogin = username == 'demo' && password == 'demo';
+
+      if (isDemoLogin) {
+        setToken('demo');
+        setUser({ username: 'demo', role: 'demo' });
+        return true;
+      }
+
+      const res = await fetch(`${SERVER_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -70,11 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      const data = (username=='demo' && password =='demo') ? {        "token": "demo",
-        "user": {
-          "username": "demo",
-          "role": "demo"
-        }}: await res.json();
+      const data = await res.json();
       const receivedToken: string | undefined =
         data.token ?? data.accessToken ?? data.access_token ?? data.jwt;
 
