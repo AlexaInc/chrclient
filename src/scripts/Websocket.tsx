@@ -2,13 +2,19 @@ import { io, Socket } from 'socket.io-client';
 
 let socket: Socket | null = null;
 
-export const connectSocket = (serverUrl: string): Socket => {
+/**
+ * Connect the Socket.IO client using the token obtained from
+ * POST {SERVER_URL}/auth/login. The socket is NOT connected until login
+ * succeeds — call this only with a valid token.
+ */
+export const connectSocket = (serverUrl: string, token: string): Socket => {
     if (!socket) {
         socket = io(serverUrl, {
             // Long-polling හරහා පළමුව සම්බන්ධ වී පසුව WebSocket වෙත මාරු වීමට ඉඩ හරින්න
             transports: ['polling', 'websocket'],
             auth: {
-                role: 'authorized' // සර්වර් එකේ 'authorized' role එකට මැッチ වන ලෙස 'role' යොදන්න
+                role: 'authorized', // සර්වර් එකේ 'authorized' role එකට මැච් වන ලෙස 'role' යොදන්න
+                token,              // token from /auth/login — server should validate this
             },
             autoConnect: true,
         });
@@ -29,6 +35,10 @@ export const connectSocket = (serverUrl: string): Socket => {
     }
     return socket;
 };
+
+export const getSocket = (): Socket | null => socket;
+
+export const isSocketConnected = (): boolean => !!socket?.connected;
 
 export const emitMessage = (event: string, data: any): void => {
     if (socket) {

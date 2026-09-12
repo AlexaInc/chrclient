@@ -5,11 +5,13 @@ import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import { useIsDesktop } from './ui';
+import { useAuth } from '../auth/AuthContext';
 
 export default function Header({ title }: { title?: string }) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const isDesktop = useIsDesktop();
+  const { user, logout } = useAuth();
 
   return (
     <View
@@ -58,10 +60,17 @@ export default function Header({ title }: { title?: string }) {
           </View>
           {isDesktop && (
             <View>
-              <Text className="text-xs font-extrabold text-slate-800">Admin</Text>
-              <Text className="text-[11px] font-semibold text-slate-400">Administrator</Text>
+              <Text className="text-xs font-extrabold text-slate-800">{user?.username ?? 'Guest'}</Text>
+              <Text className="text-[11px] font-semibold text-slate-400">{user?.role ?? 'Signed in'}</Text>
             </View>
           )}
+          <TouchableOpacity
+            onPress={logout}
+            activeOpacity={0.7}
+            className="w-9 h-9 rounded-xl items-center justify-center bg-slate-50"
+          >
+            <Feather name="log-out" size={16} color={colors.slate600} />
+          </TouchableOpacity>
         </View>
       </View>
     </View>
