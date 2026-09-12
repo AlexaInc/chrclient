@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ai-crop-robot",
+    "name": "AI Crop Robot",
     "slug": "ai-crop-robot",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,6 +20,7 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "backgroundColor": "#043622"
   }
 }
