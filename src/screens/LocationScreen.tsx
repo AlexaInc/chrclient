@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
-import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page, CardRail } from '../components/ui';
+import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page, CardRail, useIsDesktop } from '../components/ui';
 import { colors } from '../theme';
+import LiveMap from '../map/LiveMap';
+import { useRealtime } from '../realtime/RealtimeContext';
 
 const KPIS = [
   {
@@ -47,6 +49,19 @@ const LAYERS = ['All Layers', 'Satellite', 'Topography', 'NDVI Heatmap', 'Rover 
 
 export default function LocationScreen() {
   const [layer, setLayer] = useState(0);
+  const isDesktop = useIsDesktop();
+  const { location, trail, telemetry, battery, status, isDemo } = useRealtime();
+
+  const kpis = KPIS.map((k) => {
+    if (k.label === 'RTK LOCK & PRECISION' && location) {
+      return { ...k, value: `${location.satellites} Satellites`, sub: `GNSS Fix • Alt ${location.altitude.toFixed(1)}m MSL` };
+    }
+    if (k.label === 'ACTIVE ROVERS ON MAP' && status) {
+      const online = status.state !== 'offline' && status.state !== 'fault';
+      return { ...k, value: online ? '1 Unit ONLINE' : '0 Units ONLINE', sub: 'Rover Alpha-01' };
+    }
+    return k;
+  });
 
   return (
     <View className="flex-1 bg-surface">
@@ -75,7 +90,7 @@ export default function LocationScreen() {
 
         {/* KPIs */}
         <CardRail className="mt-4">
-          {KPIS.map((k) => (
+          {kpis.map((k) => (
             <Card key={k.label} className="w-[200px] lg:w-auto lg:flex-1 lg:min-w-[190px]">
               <IconBox className={k.iconBg} size={36}>{k.icon}</IconBox>
               <Text className="text-[10px] font-extrabold text-slate-400 mt-2.5 tracking-wide">{k.label}</Text>
@@ -108,32 +123,34 @@ export default function LocationScreen() {
           </ScrollView>
 
           <View className="mt-3">
-            <Image
-              source={require('../../assets/images/farm-map.jpg')}
-              className="w-full h-[220px] lg:h-[380px] rounded-xl"
-              resizeMode="cover"
-            />
-            <View className="absolute top-2.5 left-2.5 bg-sidebar/90 rounded-md px-2 py-1">
-              <Text className="text-[9px] font-extrabold text-white">ACTIVE GRID TELEMETRY</Text>
-            </View>
-            <View className="absolute right-2.5 bottom-2.5 gap-1.5">
-              <TouchableOpacity className="w-[30px] h-[30px] rounded-lg bg-white items-center justify-center border border-slate-200">
-                <Text className="text-base font-extrabold text-slate-700">+</Text>
-              </TouchableOpacity>
-              <TouchableOpacity className="w-[30px] h-[30px] rounded-lg bg-white items-center justify-center border border-slate-200">
-                <Text className="text-base font-extrabold text-slate-700">−</Text>
-              </TouchableOpacity>
+            <LiveMap location={location} trail={trail} height={isDesktop ? 380 : 260} />
+            <View className="absolute top-2.5 left-2.5 bg-sidebar/90 rounded-md px-2 py-1" pointerEvents="none">
+              <Text className="text-[9px] font-extrabold text-white">
+                {location ? (isDemo ? 'LIVE GPS • DEMO DATA' : 'LIVE GPS TELEMETRY') : 'WAITING FOR GPS…'}
+              </Text>
             </View>
           </View>
           <Text className="text-xs font-extrabold text-slate-800 mt-2.5">
             Field A - Block 2 (Tomatoes & Hydroponics)
           </Text>
           <Text className="text-[10px] text-slate-500 mt-0.5">
-            Lat: 34.0522° N • Lon: 118.2437° W • Elevation: 142m MSL
+            {location
+              ? `Lat: ${location.latitude.toFixed(5)}° ${location.latitude >= 0 ? 'N' : 'S'} • Lon: ${location.longitude.toFixed(5)}° ${location.longitude >= 0 ? 'E' : 'W'} • Elevation: ${location.altitude.toFixed(1)}m MSL • ${location.satellites} satellites`
+              : 'No GPS fix yet — waiting for location data'}
           </Text>
           <Row className="mt-2">
-            <Badge label="Mission Leg 14/18" className="bg-brand-50" textClassName="text-brand-700" />
-            <Text className="text-[10px] font-bold text-slate-500 ml-2">78% Row Path Completed</Text>
+            <Badge
+              label={
+                telemetry?.rowsDone != null && telemetry?.rowsTotal != null
+                  ? `Mission Leg ${telemetry.rowsDone}/${telemetry.rowsTotal}`
+                  : 'Mission Leg 14/18'
+              }
+              className="bg-brand-50"
+              textClassName="text-brand-700"
+            />
+            <Text className="text-[10px] font-bold text-slate-500 ml-2">
+              {telemetry?.routeProgress != null ? `${telemetry.routeProgress}% Row Path Completed` : '78% Row Path Completed'}
+            </Text>
           </Row>
         </Card>
 
@@ -144,7 +161,7 @@ export default function LocationScreen() {
               <Image source={require('../../assets/images/rover-alpha.jpg')} className="w-10 h-10 rounded-xl bg-slate-100" />
               <View className="ml-2.5">
                 <Text className="text-[13px] font-extrabold text-slate-900">Rover Alpha-01</Text>
-                <Text className="text-[10px] font-bold text-brand-700">Autonomous Weeding</Text>
+                <Text className="text-[10px] font-bold text-brand-700">{status?.mode ?? 'Autonomous Weeding'}</Text>
               </View>
             </Row>
             <Badge label="ONLINE" className="bg-brand-50" textClassName="text-brand-700" dotClassName="bg-brand-500" />
@@ -152,11 +169,13 @@ export default function LocationScreen() {
           <View className="mt-3 gap-2.5">
             <Row className="justify-between">
               <Text className="text-xs font-semibold text-slate-500">Ground Speed & Heading</Text>
-              <Text className="text-xs font-extrabold text-slate-900">1.4 m/s | 042° NE</Text>
+              <Text className="text-xs font-extrabold text-slate-900">
+                {telemetry ? `${telemetry.speed.toFixed(1)} m/s | ${String(telemetry.heading).padStart(3, '0')}°` : '— m/s | —°'}
+              </Text>
             </Row>
             <Row className="justify-between">
               <Text className="text-xs font-semibold text-slate-500">Power Remaining</Text>
-              <Text className="text-xs font-extrabold text-brand-700">82%</Text>
+              <Text className="text-xs font-extrabold text-brand-700">{battery ? `${battery.level}%` : '—'}</Text>
             </Row>
             <Row className="justify-between">
               <Text className="text-xs font-semibold text-slate-500">Next Pivot Waypoint</Text>

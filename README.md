@@ -121,6 +121,40 @@ The app uses a drawer navigator (`App.tsx`) with these screens:
 The app authenticates over REST, then opens a Socket.IO connection (as an `authorized` client)
 to send control commands to the robot and receive live sensor/scan data through the server.
 
+### Realtime message contract (`message.upsert`)
+
+Every realtime update the server sends arrives on a **single Socket.IO event** named
+`message.upsert`, wrapped in an envelope whose `Type` field tells the client how to
+interpret `Message`:
+
+```jsonc
+// socket.emit('message.upsert', envelope) — examples:
+{ "Type": "location",  "Message": { "latitude": 6.9271, "longitude": 79.8612, "altitude": 15.4, "satellites": 7 } }
+{ "Type": "telemetry", "Message": { "speed": 1.4, "heading": 42, "routeProgress": 78, "rowsDone": 14, "rowsTotal": 18 } }
+{ "Type": "battery",   "Message": { "level": 82, "solarWatts": 94, "minutesRemaining": 255 } }
+{ "Type": "status",    "Message": { "state": "patrolling", "mode": "Autonomous Weeding", "currentRow": 14, "totalRows": 18 } }
+{ "Type": "sensors",   "Message": { "soilMoisture": 62, "temperature": 28, "cropHealth": 87, "pestAlerts": 2 } }
+{ "Type": "alert",     "Message": { "severity": "warning", "title": "Pest detected", "description": "Aphids in Block C" } }
+```
+
+All envelope/payload TypeScript types live in `src/types/messages.ts`
+(`RealtimeEnvelope` discriminated union + `parseEnvelope()` validator).
+`src/realtime/RealtimeContext.tsx` subscribes once to `message.upsert`, reduces the
+envelopes into app-wide state, and screens consume it with the `useRealtime()` hook.
+
+### Demo mode
+
+Log in with **username `demo` / password `demo`** to run the app with **no server**:
+the socket is never opened and `src/realtime/demoSimulator.ts` fabricates the same
+`message.upsert` envelopes on a timer (moving GPS track in Colombo, draining battery,
+sensor drift, periodic alerts). Screens show a "DEMO DATA" badge in this mode.
+
+### Live map
+
+`src/map/LiveMap.tsx` renders an OpenStreetMap/Leaflet map (WebView on Android/iOS —
+Expo Go compatible; iframe on web) showing the rover's live position and recent GPS
+trail, updated in place via `postMessage` — no reloads between fixes.
+
 ---
 
 ## Project Structure
