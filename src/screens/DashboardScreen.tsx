@@ -5,6 +5,8 @@ import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, Page, CardRail, Grid, GridItem, useIsDesktop } from '../components/ui';
 import { Sparkline, LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
+import FieldMapCard from "../components/FieldMapcard";
+
 
 const STATS = [
   {
@@ -140,7 +142,7 @@ export default function DashboardScreen() {
               </Row>
               <Image
                 source={require('../../assets/images/rover.jpg')}
-                className="w-full h-[170px] rounded-xl mt-3"
+                className="w-full self-center rounded-xl mt-3"
                 resizeMode="cover"
               />
               <Row className="justify-between mt-3">
@@ -148,7 +150,7 @@ export default function DashboardScreen() {
                   <Text className="text-[10px] font-extrabold text-slate-400">BATTERY</Text>
                   <Row className="mt-1">
                     <MaterialCommunityIcons name="battery-80" size={18} color={colors.emerald500} />
-                    <Text className="text-xs font-extrabold text-slate-800"> 82%</Text>
+                    <Text className="text-xs font-extrabold text-slate-800"> 88%</Text>
                   </Row>
                 </View>
                 <View>
@@ -166,21 +168,7 @@ export default function DashboardScreen() {
             </Card>
           </GridItem>
 
-          <GridItem span={4} cols={12}>
-            <Card className="flex-1">
-              <SectionTitle>CURRENT LOCATION</SectionTitle>
-              <Image
-                source={require('../../assets/images/field-map.jpg')}
-                className="w-full h-[180px] rounded-lg mt-3 border border-slate-200"
-                resizeMode="cover"
-              />
-              <Row className="mt-2.5">
-                <Text className="text-xs font-extrabold text-slate-800">Field A</Text>
-                <Text className="text-slate-400 mx-2">•</Text>
-                <Text className="text-xs font-extrabold text-slate-700">Block 2</Text>
-              </Row>
-            </Card>
-          </GridItem>
+        <FieldMapCard></FieldMapCard>
 
           <GridItem span={3} cols={12}>
             <Card className="flex-1">
@@ -285,7 +273,7 @@ export default function DashboardScreen() {
 
         {/* Footer */}
         <View className={`mt-6 bg-sidebar rounded-xl p-3.5 ${isDesktop ? 'flex-row justify-between px-6' : 'items-center gap-1'}`}>
-          <Text className="text-[11px] font-semibold text-white">© 2026 AI Crop Robot | All Rights Reserved</Text>
+          <Text className="text-[11px] font-semibold text-white">© 2026 Group 01 SLIIT Kurunegala IT | All Rights Reserved</Text>
           <Text className="text-[11px] font-semibold text-brand-300">Version 1.0.0</Text>
         </View>
       </Page>

@@ -5,6 +5,7 @@ import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, PillButton, ProgressBar, Page, CardRail } from '../components/ui';
 import { LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
+import { emitMessage } from '../scripts/Websocket';
 
 const KPIS = [
   {
@@ -56,6 +57,14 @@ const DIAGNOSTICS = [
 ];
 
 export default function RobotScreen() {
+  const handleStartRobot = () => {
+    emitMessage('control_message', {
+      action: 'stop',
+      speed: 10,
+      timestamp: new Date()
+    });
+  };
+
 
   return (
     <View className="flex-1 bg-surface">
@@ -76,7 +85,7 @@ export default function RobotScreen() {
         </Row>
 
         <Row className="mt-4 gap-2.5 lg:max-w-[560px]">
-          <PillButton label="Emergency Stop (E-Stop)" className="flex-1 bg-rose-600" textClassName="text-white" />
+          <PillButton label="Emergency Stop (E-Stop)" className="flex-1 bg-rose-600" textClassName="text-white" onPress={handleStartRobot} />
           <PillButton label="Deploy New Mission" className="flex-1 bg-brand-600" textClassName="text-white" />
         </Row>
 
