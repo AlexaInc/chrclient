@@ -65,10 +65,9 @@ function fmtMinutes(min?: number): string {
 export default function RobotScreen() {
   const { telemetry, battery, status, location, isDemo } = useRealtime();
 
-  const handleStartRobot = () => {
+  const handleStopRobot = () => {
     emitMessage('control_message', {
       action: 'stop',
-      speed: 10,
       timestamp: new Date()
     });
   };
@@ -144,7 +143,7 @@ export default function RobotScreen() {
         </Row>
 
         <Row className="mt-4 gap-2.5 lg:max-w-[560px]">
-          <PillButton label="Emergency Stop (E-Stop)" className="flex-1 bg-rose-600" textClassName="text-white" onPress={handleStartRobot} />
+          <PillButton label="Emergency Stop (E-Stop)" className="flex-1 bg-rose-600" textClassName="text-white" onPress={handleStopRobot} />
           <PillButton label="Deploy New Mission" className="flex-1 bg-brand-600" textClassName="text-white" />
         </Row>
 

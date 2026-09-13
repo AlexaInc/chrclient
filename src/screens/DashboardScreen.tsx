@@ -21,7 +21,7 @@ const STATS = [
   },
   {
     label: 'Soil Moisture',
-    value: '62%',
+    value: '68%',
     status: 'Moderate',
     statusClass: 'text-blue-600',
     iconBg: 'bg-blue-100',
@@ -56,7 +56,7 @@ const STATS = [
     statusClass: 'text-brand-600',
     iconBg: 'bg-brand-100',
     icon: <Feather name="map-pin" size={18} color={colors.emerald600} />,
-    spark: [25, 35, 70, 35],
+    spark: [0,1,1,1],
     sparkColor: colors.green500,
   },
 ];
@@ -107,19 +107,22 @@ export default function DashboardScreen() {
 
   // Live values (fall back to placeholders until the first message arrives)
   const stats = STATS.map((s) => {
+
     switch (s.label) {
       case 'Crop Health':
-        return sensors?.cropHealth != null ? { ...s, value: `${sensors.cropHealth}%` } : s;
+        return sensors?.cropHealth != null ? { ...s, value: `${sensors.cropHealth}%` ,spark: [...(s.spark || []), sensors.cropHealth] } : s;
       case 'Soil Moisture':
-        return sensors?.soilMoisture != null ? { ...s, value: `${sensors.soilMoisture}%` } : s;
+        return sensors?.soilMoisture != null ? { ...s, value: `${sensors.soilMoisture}%`,spark: [...(s.spark || []), sensors.soilMoisture],status: sensors.soilMoisture < 20 ? "dry" : sensors.soilMoisture <= 40 ? "low-moderate" : sensors.soilMoisture <= 70 ? "optimal" : sensors.soilMoisture <= 90 ? "wet" : "saturated"  } : s;
       case 'Temperature':
-        return sensors?.temperature != null ? { ...s, value: `${sensors.temperature}°C` } : s;
+        return sensors?.temperature != null ? { ...s, value: `${sensors.temperature}°C`,spark: [...(s.spark || []), sensors.temperature],status: sensors.temperature < 10 ? "very cold" : sensors.temperature <= 20 ? "cool" : sensors.temperature <= 30 ? "optimal" : sensors.temperature <= 40 ? "hot" : "extreme heat" } : s;
       case 'Pest Alerts':
         return sensors?.pestAlerts != null
-          ? { ...s, value: String(sensors.pestAlerts), status: sensors.pestAlerts > 3 ? 'High Risk' : 'Low Risk' }
+          ? { ...s, value: String(sensors.pestAlerts), status: sensors.pestAlerts > 3 ? 'High Risk' : 'Low Risk',spark: [...(s.spark || []), sensors.pestAlerts] }
           : s;
       case 'Location':
-        return location ? { ...s, value: 'Field A', status: 'Live GPS' } : s;
+        return location ? { ...s, value: 'Field A', status: 'Live GPS', spark: [...(s.spark || []), 1]} : s;
+      case 'status':
+        return location ?{ ...s, value: s.value, status: status?.state,spark: [...(s.spark||[] ), ((status?.state === 'offline') || (status?.state === 'fault')) ? 0: 1] } : s;
       default:
         return s;
     }
@@ -161,7 +164,7 @@ export default function DashboardScreen() {
           <Row className={`self-start bg-white border border-slate-200 rounded-lg px-3 py-1.5 ${isDesktop ? '' : 'mt-2'}`}>
             <Text className="text-xs text-slate-400">Date: </Text>
             <Feather name="calendar" size={13} color={colors.emerald600} />
-            <Text className="text-xs font-extrabold text-slate-700 ml-1.5">18 May 2026</Text>
+            <Text className="text-xs font-extrabold text-slate-700 ml-1.5">{new Date().toDateString()}</Text>
           </Row>
         </View>
 

@@ -1,20 +1,4 @@
-/**
- * Realtime message contract.
- *
- * The server sends EVERY realtime update through a single Socket.IO event:
- *
- *     socket.emit('message.upsert', { Type: '<kind>', Message: { ...payload } })
- *
- * `Type` discriminates the payload shape. Example:
- *
- *     { "Type": "location",
- *       "Message": { "latitude": 6.9271, "longitude": 79.8612, "altitude": 15.4, "satellites": 7 } }
- *
- * Add new kinds by declaring the payload interface, adding a member to the
- * `RealtimeEnvelope` union, and handling it in the realtime reducer.
- */
 
-/** The single socket event name every realtime update arrives on. */
 export const MESSAGE_UPSERT_EVENT = 'message.upsert';
 
 /* ------------------------------------------------------------------ */
@@ -53,14 +37,10 @@ export interface TelemetryMessage {
 
 /** Type: "battery" — power system state. */
 export interface BatteryMessage {
-  /** 0–100 percent */
   level: number;
-  /** pack voltage */
   voltage?: number;
   charging?: boolean;
-  /** solar input in watts */
   solarWatts?: number;
-  /** estimated runtime remaining, in minutes */
   minutesRemaining?: number;
 }
 
@@ -73,44 +53,30 @@ export type RobotState =
   | 'fault'
   | 'offline';
 
-/** Type: "status" — overall robot status. */
 export interface StatusMessage {
   state: RobotState;
-  /** e.g. "Autonomous Weeding" */
   mode?: string;
   currentRow?: number;
   totalRows?: number;
   firmware?: string;
-  /** free-text status detail */
   message?: string;
 }
 
-/** Type: "sensors" — environment / crop sensor readings. */
 export interface SensorsMessage {
-  /** 0–100 percent */
   soilMoisture: number;
-  /** °C */
   temperature: number;
-  /** 0–100 percent relative humidity */
   humidity?: number;
-  /** 0–100 crop health index */
   cropHealth?: number;
-  /** count of active pest detections */
   pestAlerts?: number;
 }
 
-/** Type: "alert" — a notification the UI should surface. */
 export interface AlertMessage {
   severity: 'info' | 'warning' | 'critical';
   title: string;
   description?: string;
-  /** ISO string or epoch millis; defaults to arrival time */
   timestamp?: string | number;
 }
 
-/* ------------------------------------------------------------------ */
-/* Envelope (discriminated union on `Type`)                            */
-/* ------------------------------------------------------------------ */
 
 export type RealtimeEnvelope =
   | { Type: 'location'; Message: LocationMessage }
@@ -131,11 +97,7 @@ const KNOWN_TYPES: MessageType[] = [
   'alert',
 ];
 
-/**
- * Validate raw socket data into a typed envelope.
- * Accepts an object or a JSON string; returns null for anything malformed
- * or with an unknown Type (logged so new server kinds are easy to spot).
- */
+
 export function parseEnvelope(raw: unknown): RealtimeEnvelope | null {
   let data: any = raw;
   if (typeof data === 'string') {
