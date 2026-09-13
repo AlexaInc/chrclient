@@ -2,11 +2,7 @@ import React from 'react';
 import { Text } from 'react-native';
 import { CommandResponse } from '../types/actions';
 
-/**
- * One-line ack feedback shown under action buttons:
- * green "✓ message" on success, red "✕ reason" on failure.
- * Renders nothing when there is no result (or while pending).
- */
+
 export default function ActionFeedback({
   result,
   className = '',

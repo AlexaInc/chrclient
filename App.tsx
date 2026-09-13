@@ -30,9 +30,6 @@ export default function App() {
     const { width } = useWindowDimensions();
     const isDesktop = width >= DESKTOP_BP;
 
-    // NOTE: the websocket is no longer connected here on app mount.
-    // The app opens UNAUTHORIZED; LoginModal blocks until POST /auth/login
-    // succeeds, and only then AuthContext connects the socket with the token.
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>

@@ -16,16 +16,10 @@ export interface ActionBarButton {
 
 interface Props {
   buttons: ActionBarButton[];
-  /** most recent ack from either button, shown underneath */
   result?: CommandResponse | null;
   className?: string;
 }
 
-/**
- * The paired action buttons under each screen intro
- * (e.g. "Export Incident Log" + "Acknowledge All"), wired to commands
- * with pending labels and ack feedback.
- */
 export default function ActionBar({ buttons, result = null, className = 'mt-3.5' }: Props) {
   return (
     <View className={className}>
