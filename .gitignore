@@ -40,3 +40,4 @@ yarn-error.*
 /ios
 /android
 /message-upsert-mock-payloads.md
+/custom-field-map-guide.md

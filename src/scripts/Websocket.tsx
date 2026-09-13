@@ -49,6 +49,26 @@ export const emitMessage = (event: string, data: any): void => {
         console.warn('Socket instance not initialized!');
     }
 };
+export const emitMessageWithcallback = async (event: string, data: any): Promise<any> => {
+    if (!socket) {
+        console.warn('Socket instance not initialized!');
+        return "Socket instance not initialized!";
+    }
+
+    if (!socket.connected) {
+        socket.connect();
+    }
+
+    return new Promise((resolve) => {
+        socket!.emit(event, data, (response: { success: boolean; message?: string; reason?: string }) => {
+            if (response) {
+                resolve(response);
+            } else {
+                resolve("fail to send message to server frontend err");
+            }
+        });
+    });
+};
 
 export const addEventListener = (event: string, callback: (data: any) => void): void => {
     if (socket) {

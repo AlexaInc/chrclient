@@ -5,7 +5,7 @@ import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, PillButton, ProgressBar, Page, CardRail } from '../components/ui';
 import { LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
-import { emitMessage } from '../scripts/Websocket';
+import {emitMessage, emitMessageWithcallback} from '../scripts/Websocket';
 import { useRealtime } from '../realtime/RealtimeContext';
 
 const KPIS = [
@@ -72,10 +72,19 @@ export default function RobotScreen() {
     });
   };
 
+  const ChangeRoveropMode = async (mode: string, timestamp: number = Date.now()) => {
+    const response = await emitMessageWithcallback('control_message', {
+      action: 'change_mode',
+      data: {
+        mode: mode,
+      },
+      timestamp: timestamp,
+    });
+    console.log(response);
+  }
   const online = status?.state != null && status.state !== 'offline' && status.state !== 'fault';
   const fault = status?.state === 'fault';
 
-  // Live KPI values (fall back to the static defaults until data arrives)
   const kpis = KPIS.map((k) => {
     switch (k.label) {
       case 'Battery & Solar':
@@ -202,6 +211,7 @@ export default function RobotScreen() {
             {CONTROLS.map((c) => (
               <TouchableOpacity
                 key={c.label}
+                onPress={()=>{}}
                 activeOpacity={0.75}
                 className="w-[47.5%] lg:w-[23%] grow bg-brand-50 border border-brand-100 rounded-xl py-4 items-center gap-1.5"
               >
