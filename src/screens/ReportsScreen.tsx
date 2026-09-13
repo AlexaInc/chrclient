@@ -3,8 +3,13 @@ import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page, CardRail } from '../components/ui';
+import KpiRail from '../components/KpiRail';
 import { LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
+import { scheduleReport } from '../scripts/Commands';
+import { useCommand } from '../hooks/useCommand';
+import ActionFeedback from '../components/ActionFeedback';
+import FilterTabs from '../components/FilterTabs';
 
 const KPIS = [
   {
@@ -84,6 +89,9 @@ const REPORTS = [
 
 export default function ReportsScreen() {
   const [filter, setFilter] = useState(0);
+  const [showFilters, setShowFilters] = useState(true);
+
+  const schedule = useCommand(scheduleReport);
 
   return (
     <View className="flex-1 bg-surface">
@@ -101,25 +109,22 @@ export default function ReportsScreen() {
 
         <Row className="mt-3.5 gap-2.5 lg:max-w-[560px]">
           <PillButton
-            label="Filter: Date & Type"
+            label={showFilters ? 'Hide Filters' : 'Filter: Date & Type'}
             className="flex-1 border-[1.5px] border-slate-700"
             textClassName="text-slate-700"
+            onPress={() => setShowFilters((v) => !v)}
           />
-          <PillButton label="+ Schedule New Report" className="flex-1 bg-brand-600" textClassName="text-white" />
+          <PillButton
+            label={schedule.pending ? 'Scheduling…' : '+ Schedule New Report'}
+            className={`flex-1 bg-brand-600 ${schedule.pending ? 'opacity-60' : ''}`}
+            textClassName="text-white"
+            onPress={() => schedule.run({ kind: 'agronomy_report', every: 'weekly', format: 'pdf' })}
+          />
         </Row>
+        <ActionFeedback result={schedule.result} />
 
         {/* KPIs */}
-        <CardRail className="mt-4">
-          {KPIS.map((k) => (
-            <Card key={k.label} className="w-[190px] lg:w-auto lg:flex-1 lg:min-w-[190px]">
-              <IconBox className={k.iconBg} size={36}>{k.icon}</IconBox>
-              <Text className="text-[10px] font-extrabold text-slate-400 mt-2.5 tracking-wide">{k.label}</Text>
-              <Text className="text-[17px] font-extrabold text-slate-900 mt-0.5">{k.value}</Text>
-              <Text className="text-[11px] font-bold text-brand-700 mt-1">{k.sub}</Text>
-              <Text className="text-[10px] text-slate-400 mt-0.5">{k.note}</Text>
-            </Card>
-          ))}
-        </CardRail>
+        <KpiRail items={KPIS} />
 
         {/* Featured dossier */}
         <Card className="mt-4">
@@ -127,20 +132,7 @@ export default function ReportsScreen() {
           <Text className="text-[10px] text-slate-500 mt-1">
             Automated agronomic multi-spectral telemetry, crop health certifications, and sensor validation
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2.5" contentContainerStyle={{ gap: 8 }}>
-            {FILTERS.map((f, i) => (
-              <TouchableOpacity
-                key={f}
-                onPress={() => setFilter(i)}
-                activeOpacity={0.8}
-                className={`px-3 py-[7px] rounded-lg border ${
-                  i === filter ? 'bg-brand-600 border-brand-600' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <Text className={`text-[11px] font-bold ${i === filter ? 'text-white' : 'text-slate-600'}`}>{f}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {showFilters && <FilterTabs tabs={FILTERS} active={filter} onSelect={setFilter} />}
           <View className="mt-3">
             <Image
               source={require('../../assets/images/reports-3d.jpg')}

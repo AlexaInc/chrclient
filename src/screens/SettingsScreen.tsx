@@ -4,6 +4,10 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, ProgressBar, Page, CardRail } from '../components/ui';
 import { colors } from '../theme';
+import { applyFleetConfig } from '../scripts/Commands';
+import { useCommand } from '../hooks/useCommand';
+import ActionFeedback from '../components/ActionFeedback';
+import FilterTabs from '../components/FilterTabs';
 
 const STATUS = [
   {
@@ -45,10 +49,38 @@ const STATUS = [
 
 const SECTIONS = ['Autonomous Navigation', 'Vision & Edge AI', 'RTK Base & Geofencing', 'API Keys & Hooks', 'Audit Trail'];
 
+const SPEED_MIN = 0.5;
+const SPEED_MAX = 2.5;
+const CONF_MIN = 50;
+const CONF_MAX = 99;
+
 export default function SettingsScreen() {
   const [section, setSection] = useState(0);
   const [weatherRTB, setWeatherRTB] = useState(true);
   const [microSpray, setMicroSpray] = useState(true);
+  const [maxSpeed, setMaxSpeed] = useState(1.4); // m/s
+  const [confidence, setConfidence] = useState(85); // %
+
+  const apply = useCommand(applyFleetConfig);
+
+  const speedPct = ((maxSpeed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN)) * 100;
+  const confPct = confidence;
+
+  const stepSpeed = (dir: 1 | -1) =>
+    setMaxSpeed((v) => Math.min(SPEED_MAX, Math.max(SPEED_MIN, +(v + dir * 0.1).toFixed(1))));
+  const stepConfidence = (dir: 1 | -1) =>
+    setConfidence((v) => Math.min(CONF_MAX, Math.max(CONF_MIN, v + dir * 1)));
+
+  const onApply = () =>
+    apply.run({
+      maxSpeed,
+      obstacleClearanceCm: 12,
+      weatherRTB,
+      microSpray,
+      confidenceThreshold: confidence,
+      visionModel: 'YOLOv9-Ag-CropHealth-v2.4.1',
+      captureFps: 30,
+    });
 
   return (
     <View className="flex-1 bg-surface">
@@ -72,20 +104,7 @@ export default function SettingsScreen() {
         </CardRail>
 
         {/* Section tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-4" contentContainerStyle={{ gap: 8 }}>
-          {SECTIONS.map((s, i) => (
-            <TouchableOpacity
-              key={s}
-              onPress={() => setSection(i)}
-              activeOpacity={0.8}
-              className={`px-3.5 py-[9px] rounded-lg border ${
-                i === section ? 'bg-brand-600 border-brand-600' : 'bg-white border-slate-200'
-              }`}
-            >
-              <Text className={`text-[11px] font-bold ${i === section ? 'text-white' : 'text-slate-600'}`}>{s}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <FilterTabs tabs={SECTIONS} active={section} onSelect={setSection} className="mt-4" />
 
         {/* Autonomous navigation */}
         <Card className="mt-4">
@@ -100,15 +119,33 @@ export default function SettingsScreen() {
           <View className="mt-4">
             <Row className="justify-between">
               <Text className="text-[13px] font-extrabold text-slate-800">Maximum Rover Patrol Velocity</Text>
-              <Text className="text-xs font-extrabold text-brand-700">1.4 m/s (5.04 km/h)</Text>
+              <Text className="text-xs font-extrabold text-brand-700">
+                {maxSpeed.toFixed(1)} m/s ({(maxSpeed * 3.6).toFixed(2)} km/h)
+              </Text>
             </Row>
             <Text className="text-[11px] text-slate-500 mt-1 leading-4">
               Limits traverse velocity down crop furrows. Throttled automatically when canopy vegetation index
               exceeds 0.74 NDVI.
             </Text>
-            <View className="mt-2.5">
-              <ProgressBar value={45} barClassName="bg-brand-500" />
-            </View>
+            <Row className="mt-2.5 items-center gap-2.5">
+              <TouchableOpacity
+                onPress={() => stepSpeed(-1)}
+                activeOpacity={0.7}
+                className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 items-center justify-center"
+              >
+                <Text className="text-base font-extrabold text-slate-700">−</Text>
+              </TouchableOpacity>
+              <View className="flex-1">
+                <ProgressBar value={speedPct} barClassName="bg-brand-500" />
+              </View>
+              <TouchableOpacity
+                onPress={() => stepSpeed(1)}
+                activeOpacity={0.7}
+                className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 items-center justify-center"
+              >
+                <Text className="text-base font-extrabold text-slate-700">+</Text>
+              </TouchableOpacity>
+            </Row>
             <Row className="justify-between mt-1.5">
               <Text className="text-[10px] font-bold text-slate-400">0.5 m/s</Text>
               <Text className="text-[10px] font-bold text-slate-400">2.5 m/s</Text>
@@ -195,15 +232,31 @@ export default function SettingsScreen() {
               <Text className="text-[13px] font-extrabold text-slate-800">
                 Pathogen Detection Confidence Threshold
               </Text>
-              <Text className="text-xs font-extrabold text-brand-700">85%</Text>
+              <Text className="text-xs font-extrabold text-brand-700">{confidence}%</Text>
             </Row>
             <Text className="text-[11px] text-slate-500 mt-1 leading-4">
               Detections under this cutoff will be flagged for review rather than triggering automatic spot
               treatment.
             </Text>
-            <View className="mt-2.5">
-              <ProgressBar value={85} barClassName="bg-purple-500" />
-            </View>
+            <Row className="mt-2.5 items-center gap-2.5">
+              <TouchableOpacity
+                onPress={() => stepConfidence(-1)}
+                activeOpacity={0.7}
+                className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 items-center justify-center"
+              >
+                <Text className="text-base font-extrabold text-slate-700">−</Text>
+              </TouchableOpacity>
+              <View className="flex-1">
+                <ProgressBar value={confPct} barClassName="bg-purple-500" />
+              </View>
+              <TouchableOpacity
+                onPress={() => stepConfidence(1)}
+                activeOpacity={0.7}
+                className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 items-center justify-center"
+              >
+                <Text className="text-base font-extrabold text-slate-700">+</Text>
+              </TouchableOpacity>
+            </Row>
             <Row className="justify-between mt-1.5">
               <Text className="text-[10px] font-bold text-slate-400">50%</Text>
               <Text className="text-[10px] font-bold text-slate-400">99%</Text>
@@ -232,14 +285,19 @@ export default function SettingsScreen() {
 
         {/* Save */}
         <TouchableOpacity
+          onPress={onApply}
+          disabled={apply.pending}
           activeOpacity={0.85}
-          className="flex-row items-center justify-center bg-brand-600 rounded-xl py-3.5 mt-5"
+          className={`flex-row items-center justify-center bg-brand-600 rounded-xl py-3.5 mt-5 ${
+            apply.pending ? 'opacity-60' : ''
+          }`}
         >
           <MaterialCommunityIcons name="content-save-check-outline" size={18} color={colors.white} />
           <Text className="text-[13px] font-extrabold text-white ml-2">
-            Apply & Sync Configuration to Fleet
+            {apply.pending ? 'Syncing Configuration…' : 'Apply & Sync Configuration to Fleet'}
           </Text>
         </TouchableOpacity>
+        <ActionFeedback result={apply.result} className="self-center" />
       </Page>
     </View>
   );

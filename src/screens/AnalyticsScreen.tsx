@@ -3,8 +3,13 @@ import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page, CardRail } from '../components/ui';
+import KpiRail from '../components/KpiRail';
 import { BarChart, LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
+import { exportReport, runPredictiveModel } from '../scripts/Commands';
+import { useCommand } from '../hooks/useCommand';
+import ActionFeedback from '../components/ActionFeedback';
+import FilterTabs from '../components/FilterTabs';
 
 const KPIS = [
   {
@@ -54,6 +59,9 @@ const CROP_TABS = ['All Crops', 'Vine Tomatoes', 'Hydro Lettuce', 'Bell Peppers'
 export default function AnalyticsScreen() {
   const [tab, setTab] = useState(0);
 
+  const exportCmd = useCommand(exportReport);
+  const modelCmd = useCommand(runPredictiveModel);
+
   return (
     <View className="flex-1 bg-surface">
       <Header title="Analytics" />
@@ -70,25 +78,22 @@ export default function AnalyticsScreen() {
 
         <Row className="mt-3.5 gap-2.5 lg:max-w-[560px]">
           <PillButton
-            label="Export Agronomy Report"
-            className="flex-1 border-[1.5px] border-brand-700"
+            label={exportCmd.pending ? 'Exporting…' : 'Export Agronomy Report'}
+            className={`flex-1 border-[1.5px] border-brand-700 ${exportCmd.pending ? 'opacity-60' : ''}`}
             textClassName="text-brand-700"
+            onPress={() => exportCmd.run({ kind: 'agronomy_report', format: 'pdf' })}
           />
-          <PillButton label="Run Predictive Model" className="flex-1 bg-brand-600" textClassName="text-white" />
+          <PillButton
+            label={modelCmd.pending ? 'Running model…' : 'Run Predictive Model'}
+            className={`flex-1 bg-brand-600 ${modelCmd.pending ? 'opacity-60' : ''}`}
+            textClassName="text-white"
+            onPress={() => modelCmd.run(CROP_TABS[tab])}
+          />
         </Row>
+        <ActionFeedback result={exportCmd.result ?? modelCmd.result} />
 
         {/* KPIs */}
-        <CardRail className="mt-4">
-          {KPIS.map((k) => (
-            <Card key={k.label} className="w-[190px] lg:w-auto lg:flex-1 lg:min-w-[190px]">
-              <IconBox className={k.iconBg} size={36}>{k.icon}</IconBox>
-              <Text className="text-[10px] font-extrabold text-slate-400 mt-2.5 tracking-wide">{k.label}</Text>
-              <Text className="text-[17px] font-extrabold text-slate-900 mt-0.5">{k.value}</Text>
-              <Text className="text-[11px] font-bold text-brand-700 mt-1">{k.sub}</Text>
-              <Text className="text-[10px] text-slate-400 mt-0.5">{k.note}</Text>
-            </Card>
-          ))}
-        </CardRail>
+        <KpiRail items={KPIS} />
 
         {/* Digital twin sim */}
         <Card className="mt-4">
@@ -96,20 +101,7 @@ export default function AnalyticsScreen() {
           <Text className="text-[10px] text-slate-500 mt-1">
             Photonic sensor mapping, real-time biomass volume indexing, and greenhouse robotics feedback
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2.5" contentContainerStyle={{ gap: 8 }}>
-            {CROP_TABS.map((c, i) => (
-              <TouchableOpacity
-                key={c}
-                onPress={() => setTab(i)}
-                activeOpacity={0.8}
-                className={`px-3 py-[7px] rounded-lg border ${
-                  i === tab ? 'bg-brand-600 border-brand-600' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <Text className={`text-[11px] font-bold ${i === tab ? 'text-white' : 'text-slate-600'}`}>{c}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <FilterTabs tabs={CROP_TABS} active={tab} onSelect={setTab} />
           <View className="mt-3">
             <Image
               source={require('../../assets/images/analytics-3d.jpg')}

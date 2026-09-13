@@ -5,8 +5,19 @@ import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, PillButton, ProgressBar, Page, CardRail } from '../components/ui';
 import { LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
-import {emitMessage, emitMessageWithcallback} from '../scripts/Websocket';
 import { useRealtime } from '../realtime/RealtimeContext';
+import {
+  calibrateGimbal,
+  changeRoverMode,
+  deployMission,
+  emergencyStop,
+  pausePatrol,
+  returnToBase,
+  setManualTeleop,
+  startPatrol,
+} from '../scripts/Commands';
+import { useCommand } from '../hooks/useCommand';
+import ActionFeedback from '../components/ActionFeedback';
 
 const KPIS = [
   {
@@ -65,23 +76,30 @@ function fmtMinutes(min?: number): string {
 export default function RobotScreen() {
   const { telemetry, battery, status, location, isDemo } = useRealtime();
 
-  const handleStopRobot = () => {
-    emitMessage('control_message', {
-      action: 'stop',
-      timestamp: new Date()
-    });
-  };
+  // Typed commands with pending state + ack feedback
+  const eStop = useCommand(emergencyStop);
+  const deploy = useCommand(deployMission);
+  const rtb = useCommand(returnToBase);
+  const pause = useCommand(pausePatrol);
+  const resume = useCommand(startPatrol);
+  const teleop = useCommand(setManualTeleop);
+  const gimbal = useCommand(calibrateGimbal);
+  const mode = useCommand(changeRoverMode);
 
-  const ChangeRoveropMode = async (mode: string, timestamp: number = Date.now()) => {
-    const response = await emitMessageWithcallback('control_message', {
-      action: 'change_mode',
-      data: {
-        mode: mode,
-      },
-      timestamp: timestamp,
-    });
-    console.log(response);
-  }
+  const isPaused = status?.state === 'idle' || status?.state === 'charging';
+
+  const controlHandlers: Record<string, { run: () => void; pending: boolean }> = {
+    'Return to Base': { run: () => rtb.run(), pending: rtb.pending },
+    'Pause Patrol': {
+      run: () => (isPaused ? resume.run() : pause.run()),
+      pending: pause.pending || resume.pending,
+    },
+    'Manual Tele-Op': { run: () => teleop.run(true), pending: teleop.pending },
+    'Calibrate Gimbal': { run: () => gimbal.run(), pending: gimbal.pending },
+  };
+  const controlsResult =
+    rtb.result ?? pause.result ?? resume.result ?? teleop.result ?? gimbal.result ?? mode.result;
+
   const online = status?.state != null && status.state !== 'offline' && status.state !== 'fault';
   const fault = status?.state === 'fault';
 
@@ -152,9 +170,20 @@ export default function RobotScreen() {
         </Row>
 
         <Row className="mt-4 gap-2.5 lg:max-w-[560px]">
-          <PillButton label="Emergency Stop (E-Stop)" className="flex-1 bg-rose-600" textClassName="text-white" onPress={handleStopRobot} />
-          <PillButton label="Deploy New Mission" className="flex-1 bg-brand-600" textClassName="text-white" />
+          <PillButton
+            label={eStop.pending ? 'Stopping…' : 'Emergency Stop (E-Stop)'}
+            className={`flex-1 bg-rose-600 ${eStop.pending ? 'opacity-60' : ''}`}
+            textClassName="text-white"
+            onPress={() => eStop.run()}
+          />
+          <PillButton
+            label={deploy.pending ? 'Deploying…' : 'Deploy New Mission'}
+            className={`flex-1 bg-brand-600 ${deploy.pending ? 'opacity-60' : ''}`}
+            textClassName="text-white"
+            onPress={() => deploy.run({ name: `Mission ${new Date().toISOString().slice(0, 10)}` })}
+          />
         </Row>
+        <ActionFeedback result={eStop.result ?? deploy.result} />
 
         {/* Active unit */}
         <Card className="mt-5">
@@ -208,15 +237,54 @@ export default function RobotScreen() {
         <Card className="mt-4">
           <SectionTitle>LIVE UNIT CONTROLS</SectionTitle>
           <View className="flex-row flex-wrap gap-2.5 mt-3">
-            {CONTROLS.map((c) => (
+            {CONTROLS.map((c) => {
+              const handler = controlHandlers[c.label];
+              const label =
+                c.label === 'Pause Patrol' && isPaused ? 'Resume Patrol' : c.label;
+              return (
+                <TouchableOpacity
+                  key={c.label}
+                  onPress={handler.run}
+                  disabled={handler.pending}
+                  activeOpacity={0.75}
+                  className={`w-[47.5%] lg:w-[23%] grow bg-brand-50 border border-brand-100 rounded-xl py-4 items-center gap-1.5 ${
+                    handler.pending ? 'opacity-50' : ''
+                  }`}
+                >
+                  <MaterialCommunityIcons
+                    name={c.label === 'Pause Patrol' && isPaused ? 'play-circle-outline' : c.icon}
+                    size={22}
+                    color={colors.emerald700}
+                  />
+                  <Text className="text-[11px] font-extrabold text-brand-800 text-center">
+                    {handler.pending ? 'Sending…' : label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <ActionFeedback result={controlsResult} />
+          {/* Operator mode switch */}
+          <View className="flex-row flex-wrap gap-2 mt-3">
+            {(['autonomous', 'manual', 'paused', 'charging'] as const).map((m) => (
               <TouchableOpacity
-                key={c.label}
-                onPress={()=>{}}
-                activeOpacity={0.75}
-                className="w-[47.5%] lg:w-[23%] grow bg-brand-50 border border-brand-100 rounded-xl py-4 items-center gap-1.5"
+                key={m}
+                onPress={() => mode.run(m)}
+                disabled={mode.pending}
+                activeOpacity={0.8}
+                className={`px-3 py-[7px] rounded-lg border ${
+                  (status?.mode ?? '').toLowerCase().includes(m)
+                    ? 'bg-brand-600 border-brand-600'
+                    : 'bg-slate-50 border-slate-200'
+                }`}
               >
-                <MaterialCommunityIcons name={c.icon} size={22} color={colors.emerald700} />
-                <Text className="text-[11px] font-extrabold text-brand-800 text-center">{c.label}</Text>
+                <Text
+                  className={`text-[11px] font-bold capitalize ${
+                    (status?.mode ?? '').toLowerCase().includes(m) ? 'text-white' : 'text-slate-600'
+                  }`}
+                >
+                  {m}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>

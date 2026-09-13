@@ -6,6 +6,10 @@ import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page, CardRail, us
 import { colors } from '../theme';
 import LiveMap from '../map/LiveMap';
 import { useRealtime } from '../realtime/RealtimeContext';
+import { addFieldBoundary, deployWaypointMission } from '../scripts/Commands';
+import { useCommand } from '../hooks/useCommand';
+import ActionFeedback from '../components/ActionFeedback';
+import FilterTabs from '../components/FilterTabs';
 
 const KPIS = [
   {
@@ -52,6 +56,9 @@ export default function LocationScreen() {
   const isDesktop = useIsDesktop();
   const { location, trail, telemetry, battery, status, isDemo } = useRealtime();
 
+  const boundary = useCommand(addFieldBoundary);
+  const waypoint = useCommand(deployWaypointMission);
+
   const kpis = KPIS.map((k) => {
     if (k.label === 'RTK LOCK & PRECISION' && location) {
       return { ...k, value: `${location.satellites} Satellites`, sub: `GNSS Fix • Alt ${location.altitude.toFixed(1)}m MSL` };
@@ -80,13 +87,26 @@ export default function LocationScreen() {
         </Text>
 
         <Row className="mt-3.5 gap-2.5 lg:max-w-[560px]">
-          <PillButton label="Add Field Boundary" className="flex-1 bg-brand-600" textClassName="text-white" />
           <PillButton
-            label="Deploy Waypoint Mission"
-            className="flex-1 border-[1.5px] border-brand-700"
+            label={boundary.pending ? 'Requesting…' : 'Add Field Boundary'}
+            className={`flex-1 bg-brand-600 ${boundary.pending ? 'opacity-60' : ''}`}
+            textClassName="text-white"
+            onPress={() => boundary.run()}
+          />
+          <PillButton
+            label={waypoint.pending ? 'Deploying…' : 'Deploy Waypoint Mission'}
+            className={`flex-1 border-[1.5px] border-brand-700 ${waypoint.pending ? 'opacity-60' : ''}`}
             textClassName="text-brand-700"
+            onPress={() =>
+              waypoint.run(
+                location
+                  ? { waypoints: [[location.latitude, location.longitude]] }
+                  : undefined,
+              )
+            }
           />
         </Row>
+        <ActionFeedback result={boundary.result ?? waypoint.result} />
 
         {/* KPIs */}
         <CardRail className="mt-4">
@@ -107,20 +127,7 @@ export default function LocationScreen() {
             Real-time centimeter-grade RTK positioning & autonomous waypoint tracks
           </Text>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2.5" contentContainerStyle={{ gap: 8 }}>
-            {LAYERS.map((l, i) => (
-              <TouchableOpacity
-                key={l}
-                onPress={() => setLayer(i)}
-                activeOpacity={0.8}
-                className={`px-3 py-[7px] rounded-lg border ${
-                  i === layer ? 'bg-brand-600 border-brand-600' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <Text className={`text-[11px] font-bold ${i === layer ? 'text-white' : 'text-slate-600'}`}>{l}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <FilterTabs tabs={LAYERS} active={layer} onSelect={setLayer} />
 
           <View className="mt-3">
             <LiveMap location={location} trail={trail} height={isDesktop ? 380 : 260} />

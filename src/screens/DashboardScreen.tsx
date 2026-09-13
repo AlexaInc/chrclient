@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, Page, CardRail, Grid, GridItem, useIsDesktop } from '../components/ui';
@@ -104,6 +105,7 @@ function timeAgo(ts: number | null): string {
 export default function DashboardScreen() {
   const isDesktop = useIsDesktop();
   const { sensors, battery, status, location, alerts, lastUpdated, isDemo } = useRealtime();
+  const navigation = useNavigation<any>();
 
   // Live values (fall back to placeholders until the first message arrives)
   const stats = STATS.map((s) => {
@@ -249,6 +251,7 @@ export default function DashboardScreen() {
                 </View>
               </Row>
               <TouchableOpacity
+                onPress={() => navigation.navigate('Alerts')}
                 activeOpacity={0.8}
                 className="flex-row items-center justify-center border-[1.5px] border-purple-600 rounded-lg py-2.5 mt-4"
               >
@@ -313,7 +316,11 @@ export default function DashboardScreen() {
                   </Row>
                 ))}
               </View>
-              <TouchableOpacity activeOpacity={0.7} className="flex-row self-end items-center mt-1">
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Alerts')}
+                activeOpacity={0.7}
+                className="flex-row self-end items-center mt-1"
+              >
                 <Text className="text-xs font-extrabold text-brand-700">View All Activity</Text>
                 <Feather name="arrow-right" size={15} color={colors.emerald700} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
