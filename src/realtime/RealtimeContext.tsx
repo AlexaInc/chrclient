@@ -19,6 +19,7 @@ import {
   TelemetryMessage,
 } from '../types/messages';
 import { startDemoSimulator } from './demoSimulator';
+import { setCommandDemoMode } from '../scripts/Commands';
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -115,6 +116,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     dispatch({ kind: 'reset', isDemo });
+    setCommandDemoMode(isDemo); // demo login: commands are acked locally
     if (!isAuthenticated) return;
 
     const handle = (raw: unknown) => {

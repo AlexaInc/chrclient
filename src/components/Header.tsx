@@ -6,12 +6,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import { useIsDesktop } from './ui';
 import { useAuth } from '../auth/AuthContext';
+import { useRealtime } from '../realtime/RealtimeContext';
 
 export default function Header({ title }: { title?: string }) {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const isDesktop = useIsDesktop();
   const { user, logout } = useAuth();
+  const { alerts } = useRealtime();
+  const alertCount = alerts.length;
 
   return (
     <View
@@ -46,18 +49,29 @@ export default function Header({ title }: { title?: string }) {
       {isDesktop && <View className="flex-1" />}
 
       <View className="flex-row items-center gap-3">
-        <View>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Alerts')}
+          activeOpacity={0.7}
+        >
           <View className="w-9 h-9 rounded-xl items-center justify-center bg-slate-50">
             <Feather name="bell" size={18} color={colors.slate600} />
           </View>
-          <View className="absolute -top-1 -right-1 min-w-[17px] h-[17px] rounded-full bg-rose-500 border-[1.5px] border-white items-center justify-center px-0.5">
-            <Text className="text-white text-[9px] font-extrabold">3</Text>
-          </View>
-        </View>
+          {alertCount > 0 && (
+            <View className="absolute -top-1 -right-1 min-w-[17px] h-[17px] rounded-full bg-rose-500 border-[1.5px] border-white items-center justify-center px-0.5">
+              <Text className="text-white text-[9px] font-extrabold">
+                {alertCount > 99 ? '99+' : alertCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
         <View className="flex-row items-center gap-3">
-          <View className="w-9 h-9 rounded-xl bg-brand-800 items-center justify-center">
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            activeOpacity={0.7}
+            className="w-9 h-9 rounded-xl bg-brand-800 items-center justify-center"
+          >
             <MaterialCommunityIcons name="account" size={20} color={colors.emerald100} />
-          </View>
+          </TouchableOpacity>
           {isDesktop && (
             <View>
               <Text className="text-xs font-extrabold text-slate-800">{user?.username ?? 'Guest'}</Text>

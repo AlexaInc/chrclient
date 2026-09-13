@@ -3,8 +3,14 @@ import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page, CardRail } from '../components/ui';
+import KpiRail from '../components/KpiRail';
 import { BarChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
+import { acknowledgeAlerts, exportReport } from '../scripts/Commands';
+import { useCommand } from '../hooks/useCommand';
+import ActionFeedback from '../components/ActionFeedback';
+import { useRealtime } from '../realtime/RealtimeContext';
+import FilterTabs from '../components/FilterTabs';
 
 const KPIS = [
   {
@@ -100,6 +106,10 @@ const ALERTS = [
 
 export default function AlertsScreen() {
   const [filter, setFilter] = useState(0);
+  const { alerts } = useRealtime();
+
+  const exportLog = useCommand(exportReport);
+  const ackAll = useCommand(acknowledgeAlerts);
 
   return (
     <View className="flex-1 bg-surface">
@@ -122,25 +132,22 @@ export default function AlertsScreen() {
 
         <Row className="mt-3.5 gap-2.5 lg:max-w-[560px]">
           <PillButton
-            label="Export Incident Log"
-            className="flex-1 border-[1.5px] border-slate-700"
+            label={exportLog.pending ? 'Exporting…' : 'Export Incident Log'}
+            className={`flex-1 border-[1.5px] border-slate-700 ${exportLog.pending ? 'opacity-60' : ''}`}
             textClassName="text-slate-700"
+            onPress={() => exportLog.run({ kind: 'incident_log', format: 'csv' })}
           />
-          <PillButton label="Acknowledge All" className="flex-1 bg-brand-600" textClassName="text-white" />
+          <PillButton
+            label={ackAll.pending ? 'Acknowledging…' : 'Acknowledge All'}
+            className={`flex-1 bg-brand-600 ${ackAll.pending ? 'opacity-60' : ''}`}
+            textClassName="text-white"
+            onPress={() => ackAll.run(alerts.map((a) => a.id))}
+          />
         </Row>
+        <ActionFeedback result={exportLog.result ?? ackAll.result} />
 
         {/* KPIs */}
-        <CardRail className="mt-4">
-          {KPIS.map((k) => (
-            <Card key={k.label} className="w-[190px] lg:w-auto lg:flex-1 lg:min-w-[190px]">
-              <IconBox className={k.iconBg} size={36}>{k.icon}</IconBox>
-              <Text className="text-[10px] font-extrabold text-slate-400 mt-2.5 tracking-wide">{k.label}</Text>
-              <Text className="text-[17px] font-extrabold text-slate-900 mt-0.5">{k.value}</Text>
-              <Text className="text-[11px] font-bold text-brand-700 mt-1">{k.sub}</Text>
-              <Text className="text-[10px] text-slate-400 mt-0.5">{k.note}</Text>
-            </Card>
-          ))}
-        </CardRail>
+        <KpiRail items={KPIS} />
 
         {/* Featured incident */}
         <Card className="mt-4">
@@ -148,20 +155,12 @@ export default function AlertsScreen() {
           <Text className="text-[10px] text-slate-500 mt-1">
             Photonic diagnostics, real-time pathogen triangulation, and robotic rover telemetry
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2.5" contentContainerStyle={{ gap: 8 }}>
-            {FILTERS.map((f, i) => (
-              <TouchableOpacity
-                key={f}
-                onPress={() => setFilter(i)}
-                activeOpacity={0.8}
-                className={`px-3 py-[7px] rounded-lg border ${
-                  i === filter ? 'bg-rose-600 border-rose-600' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <Text className={`text-[11px] font-bold ${i === filter ? 'text-white' : 'text-slate-600'}`}>{f}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <FilterTabs
+            tabs={FILTERS}
+            active={filter}
+            onSelect={setFilter}
+            activeClassName="bg-rose-600 border-rose-600"
+          />
 
           <View className="mt-3">
             <Image

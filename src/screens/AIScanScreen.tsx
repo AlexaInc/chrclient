@@ -3,7 +3,18 @@ import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, Page, CardRail } from '../components/ui';
+import KpiRail from '../components/KpiRail';
 import { colors } from '../theme';
+import {
+  captureRawBurst,
+  setCameraChannel,
+  setCameraZoom,
+  setRecording,
+} from '../scripts/Commands';
+import { useCommand } from '../hooks/useCommand';
+import ActionFeedback from '../components/ActionFeedback';
+import { CameraChannel, CameraZoom } from '../types/actions';
+import FilterTabs from '../components/FilterTabs';
 
 const KPIS = [
   {
@@ -49,7 +60,9 @@ const KPIS = [
 ];
 
 const CHANNELS = ['RGB Color', 'NIR Band', 'NDVI Heatmap', 'Thermal/H₂O'];
+const CHANNEL_IDS: CameraChannel[] = ['rgb', 'nir', 'ndvi', 'thermal'];
 const ZOOMS = ['1x', '2x', '4x', 'MACRO'];
+const ZOOM_IDS: CameraZoom[] = ['1x', '2x', '4x', 'macro'];
 
 const DETECTIONS = [
   {
@@ -69,6 +82,26 @@ const DETECTIONS = [
 export default function AIScanScreen() {
   const [channel, setChannel] = useState(0);
   const [zoom, setZoom] = useState(0);
+  const [recording, setRecordingState] = useState(false);
+
+  const channelCmd = useCommand(setCameraChannel);
+  const zoomCmd = useCommand(setCameraZoom);
+  const recordCmd = useCommand(setRecording);
+  const burstCmd = useCommand(captureRawBurst);
+
+  const selectChannel = (i: number) => {
+    setChannel(i); // optimistic UI
+    channelCmd.run(CHANNEL_IDS[i]);
+  };
+  const selectZoom = (i: number) => {
+    setZoom(i);
+    zoomCmd.run(ZOOM_IDS[i]);
+  };
+  const toggleRecording = async () => {
+    const next = !recording;
+    const res = await recordCmd.run(next);
+    if (res.success) setRecordingState(next);
+  };
 
   return (
     <View className="flex-1 bg-surface">
@@ -82,17 +115,7 @@ export default function AIScanScreen() {
         </Text>
 
         {/* KPIs */}
-        <CardRail className="mt-4">
-          {KPIS.map((k) => (
-            <Card key={k.label} className="w-[190px] lg:w-auto lg:flex-1 lg:min-w-[190px]">
-              <IconBox className={k.iconBg} size={36}>{k.icon}</IconBox>
-              <Text className="text-[10px] font-extrabold text-slate-400 mt-2.5 tracking-wide">{k.label}</Text>
-              <Text className="text-[17px] font-extrabold text-slate-900 mt-0.5">{k.value}</Text>
-              <Text className="text-[11px] font-bold text-brand-700 mt-1">{k.sub}</Text>
-              <Text className="text-[10px] text-slate-400 mt-0.5">{k.note}</Text>
-            </Card>
-          ))}
-        </CardRail>
+        <KpiRail items={KPIS} />
 
         {/* Live camera feed */}
         <Card className="mt-4 p-0 overflow-hidden">
@@ -101,22 +124,12 @@ export default function AIScanScreen() {
             <Text className="text-[10px] text-slate-500 mt-1">
               Rover Alpha-01 • 3840×2160 @ 60 FPS • Sony Starvis II CMOS
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2.5" contentContainerStyle={{ gap: 8 }}>
-              {CHANNELS.map((c, i) => (
-                <TouchableOpacity
-                  key={c}
-                  onPress={() => setChannel(i)}
-                  activeOpacity={0.8}
-                  className={`px-3 py-[7px] rounded-lg border ${
-                    i === channel ? 'bg-slate-900 border-slate-900' : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  <Text className={`text-[11px] font-bold ${i === channel ? 'text-white' : 'text-slate-600'}`}>
-                    {c}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <FilterTabs
+              tabs={CHANNELS}
+              active={channel}
+              onSelect={selectChannel}
+              activeClassName="bg-slate-900 border-slate-900"
+            />
           </View>
 
           <View>
@@ -145,7 +158,7 @@ export default function AIScanScreen() {
                 {ZOOMS.map((z, i) => (
                   <TouchableOpacity
                     key={z}
-                    onPress={() => setZoom(i)}
+                    onPress={() => selectZoom(i)}
                     activeOpacity={0.8}
                     className={`px-2.5 py-1.5 rounded-md border ${
                       i === zoom ? 'bg-brand-600 border-brand-600' : 'bg-slate-50 border-slate-200'
@@ -160,20 +173,35 @@ export default function AIScanScreen() {
             </Row>
             <Row className="mt-3 gap-2.5">
               <TouchableOpacity
+                onPress={toggleRecording}
+                disabled={recordCmd.pending}
                 activeOpacity={0.8}
-                className="flex-1 flex-row items-center justify-center bg-rose-600 rounded-lg py-2.5 gap-2"
+                className={`flex-1 flex-row items-center justify-center rounded-lg py-2.5 gap-2 ${
+                  recording ? 'bg-slate-800' : 'bg-rose-600'
+                } ${recordCmd.pending ? 'opacity-60' : ''}`}
               >
-                <View className="w-2 h-2 rounded-full bg-white" />
-                <Text className="text-[11px] font-extrabold text-white">Record Live Stream</Text>
+                <View className={`w-2 h-2 rounded-full ${recording ? 'bg-rose-500' : 'bg-white'}`} />
+                <Text className="text-[11px] font-extrabold text-white">
+                  {recordCmd.pending ? 'Sending…' : recording ? 'Stop Recording' : 'Record Live Stream'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
+                onPress={() => burstCmd.run(5)}
+                disabled={burstCmd.pending}
                 activeOpacity={0.8}
-                className="flex-1 flex-row items-center justify-center bg-slate-100 rounded-lg py-2.5"
+                className={`flex-1 flex-row items-center justify-center bg-slate-100 rounded-lg py-2.5 ${
+                  burstCmd.pending ? 'opacity-60' : ''
+                }`}
               >
                 <Feather name="camera" size={14} color={colors.slate700} />
-                <Text className="text-[11px] font-extrabold text-slate-700 ml-1.5">RAW Burst</Text>
+                <Text className="text-[11px] font-extrabold text-slate-700 ml-1.5">
+                  {burstCmd.pending ? 'Capturing…' : 'RAW Burst'}
+                </Text>
               </TouchableOpacity>
             </Row>
+            <ActionFeedback
+              result={recordCmd.result ?? burstCmd.result ?? channelCmd.result ?? zoomCmd.result}
+            />
             <Text className="text-[10px] text-slate-400 mt-2.5">
               Spectral Exposure: Auto-Adjusted 1/240s | Edge GPU @ 48% Core Load
             </Text>

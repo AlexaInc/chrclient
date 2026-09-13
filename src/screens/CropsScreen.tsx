@@ -4,6 +4,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, PillButton, ProgressBar, Page, CardRail } from '../components/ui';
 import { colors } from '../theme';
+import { exportReport, registerCropBatch, selectCropSource } from '../scripts/Commands';
+import { useCommand } from '../hooks/useCommand';
+import ActionFeedback from '../components/ActionFeedback';
+import FilterTabs from '../components/FilterTabs';
 
 const KPIS = [
   {
@@ -69,6 +73,15 @@ const VITALS = [
 export default function CropsScreen() {
   const [activeCrop, setActiveCrop] = useState(0);
 
+  const exportCsv = useCommand(exportReport);
+  const register = useCommand(registerCropBatch);
+  const selectSource = useCommand(selectCropSource);
+
+  const onSelectCrop = (i: number) => {
+    setActiveCrop(i); // optimistic UI
+    selectSource.run(CROPS[i]); // tell the rover which sensor source to stream
+  };
+
   return (
     <View className="flex-1 bg-surface">
       <Header title="Crops" />
@@ -84,12 +97,24 @@ export default function CropsScreen() {
 
         <Row className="mt-3.5 gap-2.5 lg:max-w-[560px]">
           <PillButton
-            label="Export Report (CSV)"
-            className="flex-1 border-[1.5px] border-brand-700"
+            label={exportCsv.pending ? 'Exporting…' : 'Export Report (CSV)'}
+            className={`flex-1 border-[1.5px] border-brand-700 ${exportCsv.pending ? 'opacity-60' : ''}`}
             textClassName="text-brand-700"
+            onPress={() => exportCsv.run({ kind: 'crops_csv', format: 'csv' })}
           />
-          <PillButton label="+ Register Crop Batch" className="flex-1 bg-brand-600" textClassName="text-white" />
+          <PillButton
+            label={register.pending ? 'Registering…' : '+ Register Crop Batch'}
+            className={`flex-1 bg-brand-600 ${register.pending ? 'opacity-60' : ''}`}
+            textClassName="text-white"
+            onPress={() =>
+              register.run({
+                crop: CROPS[activeCrop],
+                plantedAt: new Date().toISOString().slice(0, 10),
+              })
+            }
+          />
         </Row>
+        <ActionFeedback result={exportCsv.result ?? register.result ?? selectSource.result} />
 
         {/* KPI cards */}
         <CardRail className="mt-4">
@@ -107,22 +132,7 @@ export default function CropsScreen() {
         {/* Sensor hub */}
         <Card className="mt-4">
           <SectionTitle>SENSOR ARRAY HUB</SectionTitle>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerStyle={{ gap: 8 }}>
-            {CROPS.map((c, i) => (
-              <TouchableOpacity
-                key={c}
-                onPress={() => setActiveCrop(i)}
-                activeOpacity={0.8}
-                className={`px-3 py-2 rounded-lg border ${
-                  i === activeCrop ? 'bg-brand-600 border-brand-600' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <Text className={`text-[11px] font-bold ${i === activeCrop ? 'text-white' : 'text-slate-600'}`}>
-                  {c}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <FilterTabs tabs={CROPS} active={activeCrop} onSelect={onSelectCrop} className="mt-3" />
 
           <Image
             source={require('../../assets/images/greenhouse.jpg')}

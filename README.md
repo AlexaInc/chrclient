@@ -142,6 +142,50 @@ All envelope/payload TypeScript types live in `src/types/messages.ts`
 `src/realtime/RealtimeContext.tsx` subscribes once to `message.upsert`, reduces the
 envelopes into app-wide state, and screens consume it with the `useRealtime()` hook.
 
+### Command contract (`control_message`)
+
+Every button/icon action in the UI is emitted on the single event `control_message`
+with a Socket.IO **ack callback** the server must invoke:
+
+```js
+socket.on('control_message', (msg, ack) => {
+  // msg = { action: '<name>', data?: {...}, timestamp: 169... }
+  // ... perform / forward to robot ...
+  ack({ success: true, message: 'patrol paused' });
+  // or: ack({ success: false, reason: 'robot offline' });
+});
+```
+
+Actions the client sends (full types in `src/types/actions.ts`, `ControlAction` union):
+
+| action | data | sent from |
+|---|---|---|
+| `stop` | `{ speed? }` | Robot E-Stop |
+| `start_patrol` / `pause_patrol` / `return_to_base` / `calibrate_gimbal` | — | Robot unit controls |
+| `manual_teleop` | `{ enabled }` | Robot unit controls |
+| `change_mode` | `{ mode: 'autonomous'\|'manual'\|'paused'\|'charging' }` | Robot operator mode |
+| `set_speed` | `{ speed }` | Settings |
+| `deploy_mission` / `deploy_waypoint_mission` | `{ name?, blocks?, waypoints? }` | Robot / Location |
+| `camera_set_channel` | `{ channel: 'rgb'\|'nir'\|'ndvi'\|'thermal' }` | AI Scan |
+| `camera_set_zoom` | `{ zoom: '1x'\|'2x'\|'4x'\|'macro' }` | AI Scan |
+| `camera_record` | `{ recording }` | AI Scan |
+| `camera_capture_burst` | `{ frames? }` | AI Scan |
+| `acknowledge_alerts` | `{ ids? }` | Alerts |
+| `export_report` | `{ kind, format, from?, to? }` | Alerts / Analytics / Crops |
+| `schedule_report` | `{ kind, every, format }` | Reports |
+| `run_predictive_model` | `{ crop? }` | Analytics |
+| `register_crop_batch` | `{ crop, block?, plantedAt?, notes? }` | Crops |
+| `select_crop_source` | `{ crop }` | Crops sensor hub |
+| `apply_config` | `FleetConfig` (speed, clearance, RTB, spray, confidence…) | Settings |
+| `add_field_boundary` | — | Location |
+
+UI code never touches the socket directly for actions — everything goes through the
+typed service `src/scripts/Commands.ts` (ack timeout 5 s, resolves
+`{success:false, reason}` instead of throwing) and the `useCommand()` hook
+(`src/hooks/useCommand.ts`) which provides pending state + auto-clearing ack feedback
+(`src/components/ActionFeedback.tsx`). In **demo mode** commands are acked locally, so
+every button works without a server.
+
 ### Demo mode
 
 Log in with **username `demo` / password `demo`** to run the app with **no server**:
