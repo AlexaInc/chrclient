@@ -4,11 +4,7 @@ import LiveMap from '../map/LiveMap';
 import { useRealtime } from '../realtime/RealtimeContext';
 import { Card, GridItem, Row, SectionTitle, useIsDesktop } from './ui';
 
-/**
- * Dashboard "Current Location" card — now a live Leaflet map fed by
- * realtime `message.upsert` { Type: 'location' } fixes (real socket data,
- * or the demo simulator when logged in as demo/demo).
- */
+
 export default function FieldMapCard() {
     const isDesktop = useIsDesktop();
     const { location, trail, isDemo } = useRealtime();

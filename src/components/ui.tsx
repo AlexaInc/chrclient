@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 
-// ---- Responsive helpers ----
 
 export const DESKTOP_BP = 1024;
 
@@ -10,7 +9,6 @@ export function useIsDesktop() {
   return width >= DESKTOP_BP;
 }
 
-/** Page: scroll container that centers content with a max width on desktop */
 export function Page({ children }: { children: React.ReactNode }) {
   const isDesktop = useIsDesktop();
   return (
@@ -20,7 +18,6 @@ export function Page({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** CardRail: horizontal scroll rail on mobile, wrapping flex grid on desktop */
 export function CardRail({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   const isDesktop = useIsDesktop();
   if (isDesktop) {
@@ -42,7 +39,6 @@ export function CardRail({ children, className = '' }: { children: React.ReactNo
   );
 }
 
-/** Grid: stacks on mobile, N columns on desktop */
 export function Grid({
   children,
   className = '',
@@ -60,7 +56,6 @@ export function Grid({
   );
 }
 
-/** GridItem: full width on mobile, fractional width on desktop */
 export function GridItem({
   children,
   span = 1,
@@ -86,7 +81,6 @@ export function GridItem({
   );
 }
 
-// ---- UI primitives ----
 
 export function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (

@@ -2,11 +2,6 @@ import { io, Socket } from 'socket.io-client';
 
 let socket: Socket | null = null;
 
-/**
- * Connect the Socket.IO client using the token obtained from
- * POST {SERVER_URL}/auth/login. The socket is NOT connected until login
- * succeeds — call this only with a valid token.
- */
 export const connectSocket = (serverUrl: string, token: string): Socket => {
     if (!socket) {
         socket = io(serverUrl, {

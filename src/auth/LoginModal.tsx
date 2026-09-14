@@ -13,11 +13,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from './AuthContext';
 import { colors } from '../theme';
 
-/**
- * Blocking login popup shown while the app is UNAUTHORIZED.
- * The app opens with no user logged in; this modal stays up until
- * POST /auth/login succeeds, after which the websocket connects.
- */
+
 export default function LoginModal() {
   const { isAuthenticated, isLoggingIn, loginError, login } = useAuth();
   const [username, setUsername] = useState('');

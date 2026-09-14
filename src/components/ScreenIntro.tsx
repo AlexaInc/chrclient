@@ -10,15 +10,12 @@ export interface IntroBadge {
 }
 
 interface Props {
-  /** small badges shown above the title */
   badges?: IntroBadge[];
   title: string;
   subtitle?: string;
-  /** tiny eyebrow line above the title (e.g. mission id) */
   eyebrow?: string;
 }
 
-/** Standard screen heading: badges + title + subtitle, same on all screens. */
 export default function ScreenIntro({ badges, title, subtitle, eyebrow }: Props) {
   return (
     <>

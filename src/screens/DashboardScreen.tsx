@@ -124,7 +124,7 @@ export default function DashboardScreen() {
       case 'Location':
         return location ? { ...s, value: 'Field A', status: 'Live GPS', spark: [...(s.spark || []), 1]} : s;
       case 'status':
-        return location ?{ ...s, value: s.value, status: status?.state,spark: [...(s.spark||[] ), ((status?.state === 'offline') || (status?.state === 'fault')) ? 0: 1] } : s;
+        return location ?{ ...s, value: s.value, status: status?.state,spark: [...(s.spark||[] ), ((status?.state === 'offline') || (status?.state === 'fault')) ? 0 : 1] } : s;
       default:
         return s;
     }

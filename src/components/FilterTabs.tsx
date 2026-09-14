@@ -5,16 +5,10 @@ interface Props {
   tabs: string[];
   active: number;
   onSelect: (index: number) => void;
-  /** active pill color classes */
   activeClassName?: string;
   className?: string;
 }
 
-/**
- * Horizontal filter/tab pill row (channels, crop tabs, layers, sections…).
- * `onSelect` receives the tapped index — screens combine it with a command
- * (e.g. setCameraChannel) and local state.
- */
 export default function FilterTabs({
   tabs,
   active,

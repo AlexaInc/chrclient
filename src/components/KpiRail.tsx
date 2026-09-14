@@ -13,15 +13,10 @@ export interface KpiItem {
 
 interface Props {
   items: KpiItem[];
-  /** mobile card width class, e.g. 'w-[190px]' */
   cardWidth?: string;
   className?: string;
 }
 
-/**
- * Horizontal KPI card rail used at the top of every screen
- * (rail on mobile, equal-width row on desktop).
- */
 export default function KpiRail({ items, cardWidth = 'w-[190px]', className = 'mt-4' }: Props) {
   return (
     <CardRail className={className}>
