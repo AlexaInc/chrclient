@@ -341,9 +341,9 @@ Since this project is still ongoing, here's roughly what's done and what's next:
 
 Maintained and written by **Hansaka (Alexainc)**.
 
-| Role                | Member                                                                                                                    |
-| ------------------- |---------------------------------------------------------------------------------------------------------------------------|
-| 🎨 **UI/UX Design** | Amalka [IT26101774] — [github.com/amalka123](https://github.com/amalka123)                                                |
+| Role                | Member                                                                                                                              |
+| ------------------- |-------------------------------------------------------------------------------------------------------------------------------------|
+| 🎨 **UI/UX Design** | Amalka [IT26101774] — [github.com/amalka321](https://github.com/amalka321)                                                          |
 | 💻 **Development**  | Hansaka [IT26101404]  — [github.com/AlexaInc](https://github.com/AlexaInc) · [github.com/it26101404](https://github.com/it26101404) |
 
 **Full team:**
