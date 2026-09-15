@@ -10,6 +10,7 @@ import { addFieldBoundary, deployWaypointMission } from '../scripts/Commands';
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 import FilterTabs from '../components/FilterTabs';
+import BlockMapBuilder from '../map/BlockMapBuilder';
 
 const KPIS = [
   {
@@ -54,7 +55,7 @@ const LAYERS = ['All Layers', 'Satellite', 'Topography', 'NDVI Heatmap', 'Rover 
 export default function LocationScreen() {
   const [layer, setLayer] = useState(0);
   const isDesktop = useIsDesktop();
-  const { location, trail, telemetry, battery, status, isDemo } = useRealtime();
+  const { location, trail, telemetry, battery, status, isDemo, currentBlock } = useRealtime();
 
   const boundary = useCommand(addFieldBoundary);
   const waypoint = useCommand(deployWaypointMission);
@@ -138,7 +139,7 @@ export default function LocationScreen() {
             </View>
           </View>
           <Text className="text-xs font-extrabold text-slate-800 mt-2.5">
-            Field A - Block 2 (Tomatoes & Hydroponics)
+            {currentBlock ? `${currentBlock.name} — ${currentBlock.plant}` : 'Outside mapped blocks'}
           </Text>
           <Text className="text-[10px] text-slate-500 mt-0.5">
             {location
@@ -191,24 +192,8 @@ export default function LocationScreen() {
           </View>
         </Card>
 
-        {/* Selected parcel */}
-        <Card className="mt-4">
-          <SectionTitle>SELECTED PARCEL</SectionTitle>
-          <Row className="justify-between mt-2.5">
-            <Text className="text-[15px] font-extrabold text-slate-900">Field A, Block 2</Text>
-            <Badge
-              label="Optimal Status"
-              className="bg-brand-50"
-              textClassName="text-brand-700"
-              dotClassName="bg-brand-500"
-            />
-          </Row>
-          <Image
-            source={require('../../assets/images/field-map.jpg')}
-            className="w-full h-[170px] rounded-xl mt-3"
-            resizeMode="cover"
-          />
-        </Card>
+        {/* Block map builder: mark blocks and assign the plant grown in each */}
+        <BlockMapBuilder height={isDesktop ? 380 : 280} />
 
         {/* RTK status strip */}
         <View className="mt-4 bg-sidebar rounded-2xl p-4">

@@ -7,10 +7,12 @@ import KpiRail from '../components/KpiRail';
 import { colors } from '../theme';
 import {
   captureRawBurst,
+  runPredictiveModel,
   setCameraChannel,
   setCameraZoom,
   setRecording,
 } from '../scripts/Commands';
+import { useRealtime } from '../realtime/RealtimeContext';
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 import { CameraChannel, CameraZoom } from '../types/actions';
@@ -88,6 +90,8 @@ export default function AIScanScreen() {
   const zoomCmd = useCommand(setCameraZoom);
   const recordCmd = useCommand(setRecording);
   const burstCmd = useCommand(captureRawBurst);
+  const analyzeCmd = useCommand(runPredictiveModel);
+  const { currentBlock, status } = useRealtime();
 
   const selectChannel = (i: number) => {
     setChannel(i); // optimistic UI
@@ -111,11 +115,45 @@ export default function AIScanScreen() {
           Edge AI Inference & Classification Stream
         </Text>
         <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
-          Continuous automated object bounding & botanical defect recognition
+          Images are collected during patrol and analyzed in a batch when the patrol completes
         </Text>
 
         {/* KPIs */}
         <KpiRail items={KPIS} />
+
+        {/* Batch analysis: model auto-selected by the plant of the active block */}
+        <Card className="mt-4">
+          <Row className="justify-between">
+            <SectionTitle>BATCH ANALYSIS ENGINE</SectionTitle>
+            <Badge
+              label={status?.state === 'patrolling' ? 'COLLECTING' : 'IDLE'}
+              className={status?.state === 'patrolling' ? 'bg-amber-100' : 'bg-brand-50'}
+              textClassName={status?.state === 'patrolling' ? 'text-amber-700' : 'text-brand-700'}
+              dotClassName={status?.state === 'patrolling' ? 'bg-amber-500' : 'bg-brand-500'}
+            />
+          </Row>
+          <Text className="text-[10px] text-slate-500 mt-1">
+            The AI model is switched automatically per block plant. Auto-run on patrol completion, or trigger manually.
+          </Text>
+          <Row className="justify-between mt-3">
+            <Text className="text-xs font-semibold text-slate-500">Active Block / Model</Text>
+            <Text className="text-xs font-extrabold text-slate-900">
+              {currentBlock ? `${currentBlock.name} → ${currentBlock.aiModel ?? currentBlock.plant}` : 'Awaiting GPS in a mapped block'}
+            </Text>
+          </Row>
+          <TouchableOpacity
+            onPress={() => analyzeCmd.run(currentBlock?.plant)}
+            disabled={analyzeCmd.pending}
+            activeOpacity={0.85}
+            className={`flex-row items-center justify-center bg-brand-600 rounded-xl py-2.5 mt-3 ${analyzeCmd.pending ? 'opacity-60' : ''}`}
+          >
+            <Feather name="cpu" size={15} color={colors.white} />
+            <Text className="text-xs font-extrabold text-white ml-1.5">
+              {analyzeCmd.pending ? 'Starting Analysis…' : 'Run Batch Analysis Now'}
+            </Text>
+          </TouchableOpacity>
+          <ActionFeedback result={analyzeCmd.result} />
+        </Card>
 
         {/* Live camera feed */}
         <Card className="mt-4 p-0 overflow-hidden">

@@ -9,6 +9,7 @@ import { colors } from '../theme';
 const NAV_ITEMS: { key: string; label: string; icon: keyof typeof Feather.glyphMap; badge?: string }[] = [
   { key: 'Dashboard', label: 'Dashboard', icon: 'home' },
   { key: 'Robot', label: 'Robot', icon: 'cpu' },
+  { key: 'Controller', label: 'Controller', icon: 'navigation' },
   { key: 'Crops', label: 'Crops', icon: 'feather' },
   { key: 'AIScan', label: 'AI Scan', icon: 'camera' },
   { key: 'Location', label: 'Location', icon: 'map-pin' },

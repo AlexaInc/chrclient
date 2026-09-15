@@ -14,6 +14,7 @@ import RobotScreen from './src/screens/RobotScreen';
 import CropsScreen from './src/screens/CropsScreen';
 import AIScanScreen from './src/screens/AIScanScreen';
 import LocationScreen from './src/screens/LocationScreen';
+import ControllerScreen from './src/screens/ControllerScreen';
 import AnalyticsScreen from './src/screens/AnalyticsScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
@@ -54,6 +55,7 @@ export default function App() {
                         >
                             <Drawer.Screen name="Dashboard" component={DashboardScreen} />
                             <Drawer.Screen name="Robot" component={RobotScreen} />
+                            <Drawer.Screen name="Controller" component={ControllerScreen} />
                             <Drawer.Screen name="Crops" component={CropsScreen} />
                             <Drawer.Screen name="AIScan" component={AIScanScreen} />
                             <Drawer.Screen name="Location" component={LocationScreen} />

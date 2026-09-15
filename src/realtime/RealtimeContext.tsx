@@ -20,6 +20,7 @@ import {
 } from '../types/messages';
 import { startDemoSimulator } from './demoSimulator';
 import { setCommandDemoMode } from '../scripts/Commands';
+import { FieldBlock, FieldMapMessage, UltrasonicMessage, blockAt } from '../types/map';
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -39,6 +40,9 @@ export interface RealtimeState {
   status: StatusMessage | null;
   sensors: SensorsMessage | null;
   alerts: AlertEntry[];
+  fieldMap: FieldMapMessage | null;
+  currentBlock: FieldBlock | null;
+  ultrasonic: UltrasonicMessage | null;
   /** epoch ms of the last message of any kind, null = nothing yet */
   lastUpdated: number | null;
   /** true when data is being simulated (demo/demo login) */
@@ -53,6 +57,9 @@ const initialState: RealtimeState = {
   status: null,
   sensors: null,
   alerts: [],
+  fieldMap: null,
+  currentBlock: null,
+  ultrasonic: null,
   lastUpdated: null,
   isDemo: false,
 };
@@ -75,6 +82,7 @@ function reducer(state: RealtimeState, action: Action): RealtimeState {
     case 'location': {
       next.location = envelope.Message;
       next.trail = [...state.trail.slice(-199), envelope.Message];
+      next.currentBlock = blockAt(state.fieldMap, envelope.Message.latitude, envelope.Message.longitude);
       return next;
     }
     case 'telemetry':
@@ -98,6 +106,15 @@ function reducer(state: RealtimeState, action: Action): RealtimeState {
       next.alerts = [entry, ...state.alerts].slice(0, 50); // newest first
       return next;
     }
+    case 'map': {
+      next.fieldMap = envelope.Message;
+      if (state.location)
+        next.currentBlock = blockAt(envelope.Message, state.location.latitude, state.location.longitude);
+      return next;
+    }
+    case 'ultrasonic':
+      next.ultrasonic = envelope.Message;
+      return next;
     default:
       return state;
   }

@@ -138,3 +138,13 @@ export const applyFleetConfig = (config: FleetConfig) =>
 export const addFieldBoundary = () => sendCommand({ action: 'add_field_boundary' });
 export const deployWaypointMission = (mission?: MissionRequest) =>
   sendCommand({ action: 'deploy_waypoint_mission', data: mission });
+export const saveFieldMap = (map: import('../types/map').FieldMapMessage) =>
+  sendCommand({ action: 'save_field_map', data: map });
+export const requestFieldMap = () => sendCommand({ action: 'get_field_map' });
+
+/* ------------------------------------------------------------------ */
+/* Manual drive (Controller screen)                                    */
+/* ------------------------------------------------------------------ */
+
+export const drive = (direction: import('../types/actions').DriveDirection, speed: number) =>
+  sendCommand({ action: 'drive', data: { direction, speed } });
