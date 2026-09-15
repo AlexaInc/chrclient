@@ -1,16 +1,5 @@
 import { RealtimeEnvelope } from '../types/messages';
 
-/**
- * Demo-mode data source.
- *
- * When the user logs in with demo/demo there is no server, so this module
- * fabricates the exact same `message.upsert` envelopes a real server would
- * send, on a timer. The rest of the app cannot tell the difference.
- *
- * The simulated rover drives a loop around a field in Colombo, Sri Lanka
- * (base 6.9271° N, 79.8612° E), draining its battery and emitting sensor
- * readings, status changes and occasional alerts.
- */
 
 export function startDemoSimulator(
   emit: (envelope: RealtimeEnvelope) => void,

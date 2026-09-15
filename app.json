@@ -16,7 +16,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.hansaka01.aicroprobot"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -24,6 +25,11 @@
     "backgroundColor": "#043622",
     "plugins": [
       "react-native-quick-crypto"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "815631e2-9085-418b-a268-785b53273930"
+      }
+    }
   }
 }
