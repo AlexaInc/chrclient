@@ -84,7 +84,9 @@ export type RealtimeEnvelope =
   | { Type: 'battery'; Message: BatteryMessage }
   | { Type: 'status'; Message: StatusMessage }
   | { Type: 'sensors'; Message: SensorsMessage }
-  | { Type: 'alert'; Message: AlertMessage };
+  | { Type: 'alert'; Message: AlertMessage }
+  | { Type: 'map'; Message: import('./map').FieldMapMessage }
+  | { Type: 'ultrasonic'; Message: import('./map').UltrasonicMessage };
 
 export type MessageType = RealtimeEnvelope['Type'];
 
@@ -95,6 +97,8 @@ const KNOWN_TYPES: MessageType[] = [
   'status',
   'sensors',
   'alert',
+  'map',
+  'ultrasonic',
 ];
 
 

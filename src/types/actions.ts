@@ -33,6 +33,13 @@ export interface ScheduleReportRequest {
   format: ExportFormat;
 }
 
+export type DriveDirection = 'forward' | 'backward' | 'left' | 'right' | 'stop';
+
+export interface DriveCommand {
+  direction: DriveDirection;
+  speed: number; // 0-100 percent throttle
+}
+
 export interface MissionRequest {
   name?: string;
   blocks?: string[];
@@ -86,7 +93,10 @@ export type ControlAction =
   | { action: 'apply_config'; data: FleetConfig }
   /* --- map / location --- */
   | { action: 'add_field_boundary' }
-  | { action: 'deploy_waypoint_mission'; data?: MissionRequest };
+  | { action: 'deploy_waypoint_mission'; data?: MissionRequest }
+  | { action: 'drive'; data: DriveCommand }
+  | { action: 'save_field_map'; data: import('./map').FieldMapMessage }
+  | { action: 'get_field_map' };
 
 export type ActionName = ControlAction['action'];
 

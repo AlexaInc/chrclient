@@ -53,8 +53,18 @@ export function startDemoSimulator(
     };
   }
 
+  // field map: sent once so blocks render like a real server push
+  const { DEMO_FIELD } = require('../map/demoField') as typeof import('../map/demoField');
+  emit({ Type: 'map', Message: DEMO_FIELD });
+
   const timer = setInterval(() => {
     t += 1;
+
+    // ultrasonic: every tick, 5 sensors
+    emit({
+      Type: 'ultrasonic',
+      Message: { distances_cm: Array.from({ length: 5 }, () => +(40 + Math.random() * 260).toFixed(1)) },
+    });
 
     // location: every tick (1.5s)
     const { latitude, longitude } = position(t);
