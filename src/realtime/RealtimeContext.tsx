@@ -17,6 +17,9 @@ import {
   SensorsMessage,
   StatusMessage,
   TelemetryMessage,
+  IrrigationMessage,
+  DeviceMessage,
+  AIScanMessage,
 } from '../types/messages';
 import { startDemoSimulator } from './demoSimulator';
 import { setCommandDemoMode } from '../scripts/Commands';
@@ -43,6 +46,9 @@ export interface RealtimeState {
   fieldMap: FieldMapMessage | null;
   currentBlock: FieldBlock | null;
   ultrasonic: UltrasonicMessage | null;
+  irrigation: IrrigationMessage | null;
+  devices: Record<string, DeviceMessage>;
+  latestScan: AIScanMessage | null;
   /** epoch ms of the last message of any kind, null = nothing yet */
   lastUpdated: number | null;
   /** true when data is being simulated (demo/demo login) */
@@ -60,6 +66,9 @@ const initialState: RealtimeState = {
   fieldMap: null,
   currentBlock: null,
   ultrasonic: null,
+  irrigation: null,
+  devices: {},
+  latestScan: null,
   lastUpdated: null,
   isDemo: false,
 };
@@ -114,6 +123,15 @@ function reducer(state: RealtimeState, action: Action): RealtimeState {
     }
     case 'ultrasonic':
       next.ultrasonic = envelope.Message;
+      return next;
+    case 'irrigation':
+      next.irrigation = { ...state.irrigation, ...envelope.Message };
+      return next;
+    case 'device':
+      next.devices = { ...state.devices, [envelope.Message.deviceId]: envelope.Message };
+      return next;
+    case 'ai_scan':
+      next.latestScan = envelope.Message;
       return next;
     default:
       return state;

@@ -143,6 +143,21 @@ export const saveFieldMap = (map: import('../types/map').FieldMapMessage) =>
 export const requestFieldMap = () => sendCommand({ action: 'get_field_map' });
 
 /* ------------------------------------------------------------------ */
+/* ESP32-C3 irrigation / water pump                                    */
+/* ------------------------------------------------------------------ */
+
+export const pumpOn = (durationSeconds?: number, blockId?: string) =>
+  sendCommand({ action: 'pump_on', data: { durationSeconds, blockId } });
+export const pumpOff = () => sendCommand({ action: 'pump_off' });
+export const setPumpAuto = (enabled: boolean) =>
+  sendCommand({ action: 'pump_auto', data: { enabled } });
+export const setIrrigationThreshold = (moisturePercent: number) =>
+  sendCommand({ action: 'set_irrigation_threshold', data: { moisturePercent } });
+export const irrigateBlock = (blockId: string, durationSeconds?: number) =>
+  sendCommand({ action: 'irrigate_block', data: { blockId, durationSeconds } });
+export const stopIrrigation = () => sendCommand({ action: 'stop_irrigation' });
+
+/* ------------------------------------------------------------------ */
 /* Manual drive (Controller screen)                                    */
 /* ------------------------------------------------------------------ */
 

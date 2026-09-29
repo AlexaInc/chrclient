@@ -26,8 +26,8 @@ export const DEMO_FIELD: FieldMapMessage = {
     {
       id: 'block-b',
       name: 'Block B',
-      plant: 'chili',
-      aiModel: 'chili-disease-v1',
+      plant: 'chilli',
+      aiModel: 'chilli',
       color: '#f59e0b',
       polygon: [
         [6.92705, 79.86165],
@@ -39,8 +39,8 @@ export const DEMO_FIELD: FieldMapMessage = {
     {
       id: 'block-c',
       name: 'Block C',
-      plant: 'brinjal',
-      aiModel: 'brinjal-disease-v1',
+      plant: 'potato',
+      aiModel: 'potato',
       color: '#8b5cf6',
       polygon: [
         [6.92750, 79.86165],

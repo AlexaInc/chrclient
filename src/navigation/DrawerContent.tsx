@@ -10,6 +10,7 @@ const NAV_ITEMS: { key: string; label: string; icon: keyof typeof Feather.glyphM
   { key: 'Dashboard', label: 'Dashboard', icon: 'home' },
   { key: 'Robot', label: 'Robot', icon: 'cpu' },
   { key: 'Controller', label: 'Controller', icon: 'navigation' },
+  { key: 'Irrigation', label: 'Irrigation', icon: 'droplet' },
   { key: 'Crops', label: 'Crops', icon: 'feather' },
   { key: 'AIScan', label: 'AI Scan', icon: 'camera' },
   { key: 'Location', label: 'Location', icon: 'map-pin' },

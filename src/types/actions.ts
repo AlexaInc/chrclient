@@ -96,7 +96,14 @@ export type ControlAction =
   | { action: 'deploy_waypoint_mission'; data?: MissionRequest }
   | { action: 'drive'; data: DriveCommand }
   | { action: 'save_field_map'; data: import('./map').FieldMapMessage }
-  | { action: 'get_field_map' };
+  | { action: 'get_field_map' }
+  /* --- ESP32-C3 irrigation controller --- */
+  | { action: 'pump_on'; data?: { durationSeconds?: number; blockId?: string } }
+  | { action: 'pump_off' }
+  | { action: 'pump_auto'; data: { enabled: boolean } }
+  | { action: 'set_irrigation_threshold'; data: { moisturePercent: number } }
+  | { action: 'irrigate_block'; data: { blockId: string; durationSeconds?: number } }
+  | { action: 'stop_irrigation' };
 
 export type ActionName = ControlAction['action'];
 

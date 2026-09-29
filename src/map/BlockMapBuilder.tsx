@@ -12,11 +12,14 @@ import { useRealtime } from '../realtime/RealtimeContext';
 
 /* Plant -> AI model registry; the backend switches models by block plant. */
 const PLANT_MODELS: { plant: string; model: string; color: string }[] = [
-  { plant: 'tomato', model: 'tomato-disease-v1', color: '#22c55e' },
-  { plant: 'chili', model: 'chili-disease-v1', color: '#f59e0b' },
-  { plant: 'brinjal', model: 'brinjal-disease-v1', color: '#8b5cf6' },
-  { plant: 'cabbage', model: 'cabbage-disease-v1', color: '#0ea5e9' },
-  { plant: 'bean', model: 'bean-disease-v1', color: '#ef4444' },
+  { plant: 'tomato', model: 'tomato', color: '#22c55e' },
+  { plant: 'potato', model: 'potato', color: '#a16207' },
+  { plant: 'chilli', model: 'chilli', color: '#ef4444' },
+  { plant: 'apple', model: 'apple', color: '#84cc16' },
+  { plant: 'blueberry', model: 'blueberry', color: '#4f46e5' },
+  { plant: 'cauliflower', model: 'cauliflower', color: '#0ea5e9' },
+  { plant: 'lemon', model: 'lemon', color: '#eab308' },
+  { plant: 'tea', model: 'tea', color: '#059669' },
 ];
 
 interface Props {

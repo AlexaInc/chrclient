@@ -19,6 +19,7 @@ import AnalyticsScreen from './src/screens/AnalyticsScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import IrrigationScreen from './src/screens/IrrigationScreen';
 import { colors } from './src/theme';
 import { DESKTOP_BP } from './src/components/ui';
 import { AuthProvider } from './src/auth/AuthContext';
@@ -56,6 +57,7 @@ export default function App() {
                             <Drawer.Screen name="Dashboard" component={DashboardScreen} />
                             <Drawer.Screen name="Robot" component={RobotScreen} />
                             <Drawer.Screen name="Controller" component={ControllerScreen} />
+                            <Drawer.Screen name="Irrigation" component={IrrigationScreen} />
                             <Drawer.Screen name="Crops" component={CropsScreen} />
                             <Drawer.Screen name="AIScan" component={AIScanScreen} />
                             <Drawer.Screen name="Location" component={LocationScreen} />

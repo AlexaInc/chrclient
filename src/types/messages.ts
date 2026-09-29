@@ -77,6 +77,32 @@ export interface AlertMessage {
   timestamp?: string | number;
 }
 
+export interface IrrigationMessage {
+  deviceId: string;
+  pumpOn: boolean;
+  autoMode: boolean;
+  soilMoisture?: number;
+  threshold?: number;
+  activeBlockId?: string | null;
+  remainingSeconds?: number;
+  lastSeen?: number;
+}
+
+export interface DeviceMessage {
+  deviceId: string;
+  role: 'esp_32' | 'esp_c3_pump' | string;
+  online: boolean;
+  lastSeen: number;
+}
+
+export interface AIScanMessage {
+  deviceId: string;
+  plant: string;
+  blockId: string | null;
+  blockName: string | null;
+  predictions: { className: string; confidence: number }[];
+  capturedAt: number;
+}
 
 export type RealtimeEnvelope =
   | { Type: 'location'; Message: LocationMessage }
@@ -86,7 +112,10 @@ export type RealtimeEnvelope =
   | { Type: 'sensors'; Message: SensorsMessage }
   | { Type: 'alert'; Message: AlertMessage }
   | { Type: 'map'; Message: import('./map').FieldMapMessage }
-  | { Type: 'ultrasonic'; Message: import('./map').UltrasonicMessage };
+  | { Type: 'ultrasonic'; Message: import('./map').UltrasonicMessage }
+  | { Type: 'irrigation'; Message: IrrigationMessage }
+  | { Type: 'device'; Message: DeviceMessage }
+  | { Type: 'ai_scan'; Message: AIScanMessage };
 
 export type MessageType = RealtimeEnvelope['Type'];
 
@@ -99,6 +128,9 @@ const KNOWN_TYPES: MessageType[] = [
   'alert',
   'map',
   'ultrasonic',
+  'irrigation',
+  'device',
+  'ai_scan',
 ];
 
 
