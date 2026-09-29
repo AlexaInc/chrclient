@@ -20,6 +20,8 @@ import {
   IrrigationMessage,
   DeviceMessage,
   AIScanMessage,
+  MissionMessage,
+  MissionReportMessage,
 } from '../types/messages';
 import { startDemoSimulator } from './demoSimulator';
 import { setCommandDemoMode } from '../scripts/Commands';
@@ -49,6 +51,8 @@ export interface RealtimeState {
   irrigation: IrrigationMessage | null;
   devices: Record<string, DeviceMessage>;
   latestScan: AIScanMessage | null;
+  mission: MissionMessage | null;
+  latestReport: MissionReportMessage | null;
   /** epoch ms of the last message of any kind, null = nothing yet */
   lastUpdated: number | null;
   /** true when data is being simulated (demo/demo login) */
@@ -69,6 +73,8 @@ const initialState: RealtimeState = {
   irrigation: null,
   devices: {},
   latestScan: null,
+  mission: null,
+  latestReport: null,
   lastUpdated: null,
   isDemo: false,
 };
@@ -132,6 +138,14 @@ function reducer(state: RealtimeState, action: Action): RealtimeState {
       return next;
     case 'ai_scan':
       next.latestScan = envelope.Message;
+      return next;
+    case 'mission':
+    case 'mission_progress':
+    case 'mission_complete':
+      next.mission = { ...state.mission, ...envelope.Message };
+      return next;
+    case 'report':
+      next.latestReport = envelope.Message;
       return next;
     default:
       return state;

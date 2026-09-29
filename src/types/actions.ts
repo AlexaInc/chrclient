@@ -44,6 +44,10 @@ export interface MissionRequest {
   name?: string;
   blocks?: string[];
   waypoints?: [number, number][];
+  rowSpacingM?: number;
+  scanSpacingM?: number;
+  arrivalRadiusM?: number;
+  headingDeg?: number;
 }
 
 export interface CropBatchRequest {

@@ -10,6 +10,7 @@ import { scheduleReport } from '../scripts/Commands';
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 import FilterTabs from '../components/FilterTabs';
+import { useRealtime } from '../realtime/RealtimeContext';
 
 const KPIS = [
   {
@@ -92,6 +93,7 @@ export default function ReportsScreen() {
   const [showFilters, setShowFilters] = useState(true);
 
   const schedule = useCommand(scheduleReport);
+  const { latestReport, mission } = useRealtime();
 
   return (
     <View className="flex-1 bg-surface">
@@ -122,6 +124,23 @@ export default function ReportsScreen() {
           />
         </Row>
         <ActionFeedback result={schedule.result} />
+
+        {(mission || latestReport) && (
+          <Card className="mt-4">
+            <SectionTitle>LIVE AUTONOMOUS PATROL</SectionTitle>
+            {mission && <Text className="text-xs font-bold text-slate-700 mt-2">{mission.missionId} • {mission.state} • waypoint {mission.currentWaypoint}/{mission.totalWaypoints ?? '?'}</Text>}
+            {latestReport && <View className="mt-3">
+              <Text className="text-sm font-extrabold text-brand-700">Completed: {latestReport.missionId}</Text>
+              <Text className="text-xs text-slate-600 mt-1">Analyzed images: {latestReport.report.imageCount}</Text>
+              {latestReport.report.averages.slice(0, 5).map((a) => (
+                <Row key={a.className} className="justify-between mt-1.5">
+                  <Text className="text-xs text-slate-700">{a.className}</Text>
+                  <Text className="text-xs font-extrabold">{(a.averageConfidence * 100).toFixed(1)}% avg</Text>
+                </Row>
+              ))}
+            </View>}
+          </Card>
+        )}
 
         {/* KPIs */}
         <KpiRail items={KPIS} />

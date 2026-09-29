@@ -6,7 +6,10 @@ export interface FieldBlock {
   plant: string;
   aiModel?: string;
   color?: string;
-  polygon: [number, number][]; // [lat, lng] ring, first point != last required
+  polygon: [number, number][]; // [lat, lng] ring
+  rowSpacingM?: number;
+  scanSpacingM?: number;
+  headingDeg?: number;
 }
 
 export interface FieldMapMessage {

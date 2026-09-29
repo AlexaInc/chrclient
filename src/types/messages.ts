@@ -100,8 +100,33 @@ export interface AIScanMessage {
   plant: string;
   blockId: string | null;
   blockName: string | null;
+  missionId?: string;
+  scanPoint?: number;
+  side?: 'left' | 'right' | 'manual';
   predictions: { className: string; confidence: number }[];
   capturedAt: number;
+}
+
+export interface MissionMessage {
+  missionId: string;
+  patrolId: number;
+  state: 'deployed' | 'running' | 'paused' | 'completed' | 'fault';
+  blocks: string[];
+  currentWaypoint: number;
+  totalWaypoints?: number;
+  progress?: number;
+  message?: string;
+}
+
+export interface MissionReportMessage {
+  id: number;
+  missionId: string;
+  report: {
+    imageCount: number;
+    blocks: string[];
+    averages: { className: string; averageConfidence: number; samples: number }[];
+    completedAt: number;
+  };
 }
 
 export type RealtimeEnvelope =
@@ -115,7 +140,11 @@ export type RealtimeEnvelope =
   | { Type: 'ultrasonic'; Message: import('./map').UltrasonicMessage }
   | { Type: 'irrigation'; Message: IrrigationMessage }
   | { Type: 'device'; Message: DeviceMessage }
-  | { Type: 'ai_scan'; Message: AIScanMessage };
+  | { Type: 'ai_scan'; Message: AIScanMessage }
+  | { Type: 'mission'; Message: MissionMessage }
+  | { Type: 'mission_progress'; Message: MissionMessage }
+  | { Type: 'mission_complete'; Message: MissionMessage }
+  | { Type: 'report'; Message: MissionReportMessage };
 
 export type MessageType = RealtimeEnvelope['Type'];
 
@@ -131,6 +160,10 @@ const KNOWN_TYPES: MessageType[] = [
   'irrigation',
   'device',
   'ai_scan',
+  'mission',
+  'mission_progress',
+  'mission_complete',
+  'report',
 ];
 
 

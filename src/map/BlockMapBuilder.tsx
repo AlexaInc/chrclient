@@ -5,7 +5,7 @@ import { Card, SectionTitle, Badge, Row } from '../components/ui';
 import { colors } from '../theme';
 import FieldMap from './FieldMap';
 import { FieldBlock, FieldMapMessage } from '../types/map';
-import { saveFieldMap } from '../scripts/Commands';
+import { saveFieldMap, deployMission } from '../scripts/Commands';
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 import { useRealtime } from '../realtime/RealtimeContext';
@@ -33,9 +33,14 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
   const [draft, setDraft] = useState<[number, number][]>([]);
   const [blockName, setBlockName] = useState('');
   const [plantIdx, setPlantIdx] = useState(0);
+  const [rowSpacing, setRowSpacing] = useState('1.0');
+  const [scanSpacing, setScanSpacing] = useState('1.0');
+  const [arrivalRadius, setArrivalRadius] = useState('2.0');
   const [selected, setSelected] = useState<FieldBlock | null>(null);
+  const [queuedIds, setQueuedIds] = useState<string[]>([]);
   const [localMap, setLocalMap] = useState<FieldMapMessage | null>(null);
   const save = useCommand(saveFieldMap);
+  const mission = useCommand(deployMission);
 
   const map = localMap ?? fieldMap;
 
@@ -49,6 +54,8 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
       aiModel: p.model,
       color: p.color,
       polygon: draft,
+      rowSpacingM: Math.max(0.25, Number(rowSpacing) || 1),
+      scanSpacingM: Math.max(0.25, Number(scanSpacing) || 1),
     };
     const nextMap: FieldMapMessage = { ...map, blocks: [...map.blocks, block] };
     setLocalMap(nextMap);
@@ -63,8 +70,20 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
     const nextMap: FieldMapMessage = { ...map, blocks: map.blocks.filter((b) => b.id !== id) };
     setLocalMap(nextMap);
     setSelected(null);
+    setQueuedIds((ids) => ids.filter((blockId) => blockId !== id));
     await save.run(nextMap);
   };
+
+  const selectBlock = (block: FieldBlock | null) => {
+    setSelected(block);
+    if (block) {
+      setRowSpacing(String(block.rowSpacingM ?? 1));
+      setScanSpacing(String(block.scanSpacingM ?? 1));
+    }
+  };
+
+  const toggleQueued = (id: string) => setQueuedIds((ids) =>
+    ids.includes(id) ? ids.filter((blockId) => blockId !== id) : [...ids, id]);
 
   const onLayout = (e: LayoutChangeEvent) => setWidth(Math.round(e.nativeEvent.layout.width));
 
@@ -101,7 +120,7 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
             trail={trail}
             currentBlock={currentBlock}
             selectedBlockId={selected?.id ?? null}
-            onSelectBlock={setSelected}
+            onSelectBlock={selectBlock}
             draftPoints={drawing ? draft : []}
             onTapPoint={drawing ? (la, ln) => setDraft((d) => [...d, [la, ln]]) : undefined}
           />
@@ -120,6 +139,13 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
             placeholderTextColor={colors.slate400}
             className="border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-900 mt-2 bg-white"
           />
+          <Row className="gap-2 mt-2">
+            <TextInput value={rowSpacing} onChangeText={setRowSpacing} keyboardType="decimal-pad"
+              placeholder="Row m" className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-[12px] bg-white" />
+            <TextInput value={scanSpacing} onChangeText={setScanSpacing} keyboardType="decimal-pad"
+              placeholder="Photo m" className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-[12px] bg-white" />
+          </Row>
+          <Text className="text-[10px] text-slate-500 mt-1">Row spacing (m) and distance between left/right photo stops (m).</Text>
           <Row className="gap-1.5 mt-2 flex-wrap">
             {PLANT_MODELS.map((p, i) => (
               <TouchableOpacity
@@ -181,9 +207,34 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
               <Feather name="trash-2" size={16} color={colors.rose500} />
             </TouchableOpacity>
           </Row>
+          <Row className="gap-2 mt-3">
+            <TextInput value={rowSpacing} onChangeText={setRowSpacing} keyboardType="decimal-pad"
+              placeholder="Row m" className="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-[11px] bg-white" />
+            <TextInput value={scanSpacing} onChangeText={setScanSpacing} keyboardType="decimal-pad"
+              placeholder="Photo m" className="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-[11px] bg-white" />
+            <TextInput value={arrivalRadius} onChangeText={setArrivalRadius} keyboardType="decimal-pad"
+              placeholder="GPS m" className="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-[11px] bg-white" />
+          </Row>
+          <Text className="text-[10px] text-slate-500 mt-1">Row spacing • photo-stop spacing • GPS arrival tolerance (metres)</Text>
+          <TouchableOpacity onPress={() => toggleQueued(selected.id)}
+            className={`border rounded-xl py-2 mt-2 ${queuedIds.includes(selected.id) ? 'bg-amber-50 border-amber-400' : 'bg-white border-slate-300'}`}>
+            <Text className={`text-center text-xs font-extrabold ${queuedIds.includes(selected.id) ? 'text-amber-700' : 'text-slate-700'}`}>
+              {queuedIds.includes(selected.id) ? 'REMOVE FROM PATROL QUEUE' : 'ADD TO PATROL QUEUE'}
+            </Text>
+          </TouchableOpacity>
+          {queuedIds.length > 0 && <Text className="text-[10px] font-bold text-slate-600 mt-2">
+            Queue ({queuedIds.length}): {queuedIds.map((id) => map.blocks.find((b) => b.id === id)?.name ?? id).join(' → ')}
+          </Text>}
+          <TouchableOpacity
+            onPress={() => mission.run({ blocks: queuedIds.length ? queuedIds : [selected.id], rowSpacingM: Number(rowSpacing) || 1,
+              scanSpacingM: Number(scanSpacing) || 1, arrivalRadiusM: Number(arrivalRadius) || 2 })}
+            disabled={mission.pending}
+            className="bg-brand-600 rounded-xl py-2.5 mt-2">
+            <Text className="text-white text-center text-xs font-extrabold">{mission.pending ? 'DEPLOYING…' : `DEPLOY ${queuedIds.length || 1}-BLOCK AUTONOMOUS PATROL`}</Text>
+          </TouchableOpacity>
         </View>
       )}
-      <ActionFeedback result={save.result} />
+      <ActionFeedback result={save.result ?? mission.result} />
     </Card>
   );
 }
