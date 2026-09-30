@@ -1,186 +1,204 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
-import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page, CardRail } from '../components/ui';
+import { Card, SectionTitle, Badge, Row, Page } from '../components/ui';
 import KpiRail from '../components/KpiRail';
 import { BarChart, LineChart, AutoWidth } from '../components/charts';
 import { colors } from '../theme';
-import { exportReport, runPredictiveModel } from '../scripts/Commands';
-import { useCommand } from '../hooks/useCommand';
-import ActionFeedback from '../components/ActionFeedback';
 import FilterTabs from '../components/FilterTabs';
+import { useAuth } from '../auth/AuthContext';
+import { useRealtime } from '../realtime/RealtimeContext';
+import { fetchSensorHistory, fetchIrrigationHistory, SensorHistoryRow, IrrigationHistoryRow } from '../scripts/Api';
 
-const KPIS = [
-  {
-    label: 'PROJECTED YIELD',
-    value: '184.6 Tons',
-    sub: '+12.4% vs bench',
-    note: 'On Target',
-    iconBg: 'bg-brand-100',
-    icon: <Feather name="trending-up" size={18} color={colors.emerald600} />,
-  },
-  {
-    label: 'AVG BRIX INDEX',
-    value: '12.8° Brix',
-    sub: 'Grade A+ Premium',
-    note: 'Sweetness: High',
-    iconBg: 'bg-purple-100',
-    icon: <MaterialCommunityIcons name="candy-outline" size={20} color={colors.purple600} />,
-  },
-  {
-    label: 'HARVEST READINESS',
-    value: '78.2%',
-    sub: 'Optimal',
-    note: '3 Parcels ready <48h',
-    iconBg: 'bg-orange-100',
-    icon: <MaterialCommunityIcons name="basket-outline" size={20} color={colors.orange600} />,
-  },
-  {
-    label: 'FRUIT SIZING ACC.',
-    value: '99.1%',
-    sub: 'LiDAR',
-    note: 'YOLOv9 Sizing Model',
-    iconBg: 'bg-blue-100',
-    icon: <Feather name="target" size={18} color={colors.blue600} />,
-  },
-  {
-    label: 'RESOURCE EFFICIENCY',
-    value: '94.8%',
-    sub: 'Eco',
-    note: '18.2 L/kg H₂O (-22% waste)',
-    iconBg: 'bg-brand-100',
-    icon: <MaterialCommunityIcons name="water-check-outline" size={20} color={colors.emerald600} />,
-  },
-];
+const RANGES = ['6h', '24h', '3d', '7d'];
+const RANGE_HOURS = [6, 24, 72, 168];
 
-const CROP_TABS = ['All Crops', 'Vine Tomatoes', 'Hydro Lettuce', 'Bell Peppers'];
+function avg(nums: (number | null)[]): number | null {
+  const v = nums.filter((n): n is number => n != null);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
 
 export default function AnalyticsScreen() {
-  const [tab, setTab] = useState(0);
+  const [range, setRange] = useState(1);
+  const [sensorRows, setSensorRows] = useState<SensorHistoryRow[]>([]);
+  const [irrigationRows, setIrrigationRows] = useState<IrrigationHistoryRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const { token } = useAuth();
+  const { isDemo } = useRealtime();
 
-  const exportCmd = useCommand(exportReport);
-  const modelCmd = useCommand(runPredictiveModel);
+  useEffect(() => {
+    if (isDemo || !token) return;
+    setLoading(true);
+    Promise.all([
+      fetchSensorHistory(token, RANGE_HOURS[range]),
+      fetchIrrigationHistory(token, RANGE_HOURS[range]),
+    ])
+      .then(([s, i]) => {
+        setSensorRows(s.readings);
+        setIrrigationRows(i.readings);
+      })
+      .catch((e) => console.warn('[Analytics] history fetch failed:', e?.message ?? e))
+      .finally(() => setLoading(false));
+  }, [range, isDemo, token]);
+
+  const chronological = useMemo(() => [...sensorRows].reverse(), [sensorRows]);
+  const irrigationChrono = useMemo(() => [...irrigationRows].reverse(), [irrigationRows]);
+
+  const avgTemp = avg(sensorRows.map((r) => r.temperature));
+  const avgHumidity = avg(sensorRows.map((r) => r.humidity));
+  const rainSamples = sensorRows.filter((r) => r.is_raining != null);
+  const rainPct = rainSamples.length ? (rainSamples.filter((r) => r.is_raining).length / rainSamples.length) * 100 : null;
+  const avgMoisture = avg(irrigationRows.map((r) => r.soil_moisture));
+
+  const KPIS = [
+    {
+      label: 'AVG TEMPERATURE',
+      value: avgTemp != null ? `${avgTemp.toFixed(1)}°C` : '—',
+      sub: `${sensorRows.length} readings`,
+      note: `Window: ${RANGES[range]}`,
+      iconBg: 'bg-orange-100',
+      icon: <MaterialCommunityIcons name="thermometer" size={20} color={colors.orange600} />,
+    },
+    {
+      label: 'AVG HUMIDITY',
+      value: avgHumidity != null ? `${avgHumidity.toFixed(0)}%` : '—',
+      sub: 'From onboard sensor',
+      note: `Window: ${RANGES[range]}`,
+      iconBg: 'bg-blue-100',
+      icon: <Feather name="droplet" size={18} color={colors.blue600} />,
+    },
+    {
+      label: 'TIME RAINING',
+      value: rainPct != null ? `${rainPct.toFixed(0)}%` : '—',
+      sub: 'Raindrop sensor',
+      note: `Window: ${RANGES[range]}`,
+      iconBg: 'bg-sky-100',
+      icon: <MaterialCommunityIcons name="weather-pouring" size={20} color={colors.sky600} />,
+    },
+    {
+      label: 'AVG SOIL MOISTURE',
+      value: avgMoisture != null ? `${avgMoisture.toFixed(0)}%` : '—',
+      sub: 'From irrigation pump sensor (not the robot)',
+      note: `Window: ${RANGES[range]}`,
+      iconBg: 'bg-brand-100',
+      icon: <MaterialCommunityIcons name="water-outline" size={20} color={colors.emerald600} />,
+    },
+  ];
+
+  // Reading distribution per mapped block — how much of the robot's
+  // patrol time (by sensor-reading count) was spent in each block.
+  const blockCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of sensorRows) {
+      const key = r.block_id ?? 'Unmapped';
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  }, [sensorRows]);
 
   return (
     <View className="flex-1 bg-surface">
       <Header title="Analytics" />
       <Page>
         <Row className="gap-2 flex-wrap">
-          <Badge label="AGRONOMY DATA PLATFORM" className="bg-brand-50" textClassName="text-brand-700" />
-          <Badge label="YIELD FORECASTING" className="bg-purple-100" textClassName="text-purple-700" />
+          <Badge label="SENSOR HISTORY" className="bg-brand-50" textClassName="text-brand-700" />
+          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
         </Row>
-        <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Analytics & Yield Intelligence</Text>
+        <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Analytics</Text>
         <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
-          Multi-season crop yield modeling, Brix sugar accumulation curves, automated harvest efficiency metrics,
-          and microclimate correlation analysis.
+          Historical trends from the robot's real sensors (temperature, raindrop) and the irrigation pump's soil
+          moisture sensor.
         </Text>
 
-        <Row className="mt-3.5 gap-2.5 lg:max-w-[560px]">
-          <PillButton
-            label={exportCmd.pending ? 'Exporting…' : 'Export Agronomy Report'}
-            className={`flex-1 border-[1.5px] border-brand-700 ${exportCmd.pending ? 'opacity-60' : ''}`}
-            textClassName="text-brand-700"
-            onPress={() => exportCmd.run({ kind: 'agronomy_report', format: 'pdf' })}
-          />
-          <PillButton
-            label={modelCmd.pending ? 'Running model…' : 'Run Predictive Model'}
-            className={`flex-1 bg-brand-600 ${modelCmd.pending ? 'opacity-60' : ''}`}
-            textClassName="text-white"
-            onPress={() => modelCmd.run(CROP_TABS[tab])}
-          />
-        </Row>
-        <ActionFeedback result={exportCmd.result ?? modelCmd.result} />
+        <View className="mt-3">
+          <FilterTabs tabs={RANGES} active={range} onSelect={setRange} />
+        </View>
 
-        {/* KPIs */}
-        <KpiRail items={KPIS} />
+        {isDemo ? (
+          <Card className="mt-4">
+            <Text className="text-xs text-slate-400 py-8 text-center">Historical analytics require a real server connection — not simulated in demo mode.</Text>
+          </Card>
+        ) : (
+          <>
+            <KpiRail items={KPIS} />
+            {loading && <Text className="text-xs text-slate-400 mt-2">Loading history…</Text>}
 
-        {/* Digital twin sim */}
-        <Card className="mt-4">
-          <SectionTitle>DIGITAL TWIN YIELD SIMULATION & SENSOR OVERLAY</SectionTitle>
-          <Text className="text-[10px] text-slate-500 mt-1">
-            Photonic sensor mapping, real-time biomass volume indexing, and greenhouse robotics feedback
-          </Text>
-          <FilterTabs tabs={CROP_TABS} active={tab} onSelect={setTab} />
-          <View className="mt-3">
-            <Image
-              source={require('../../assets/images/analytics-3d.jpg')}
-              className="w-full h-[200px] lg:h-[340px] rounded-xl"
-              resizeMode="cover"
-            />
-            <View className="absolute top-2.5 left-2.5 flex-row items-center bg-sidebar/90 rounded-md px-2 py-1 gap-1.5">
-              <View className="w-1.5 h-1.5 rounded-full bg-brand-400" />
-              <Text className="text-[9px] font-extrabold text-white">LIVE BIOMETRIC FEED</Text>
-            </View>
-          </View>
-          <Text className="text-[11px] font-bold text-slate-500 mt-2.5">Greenhouse Block A · Smart Pod 04</Text>
-          <Row className="justify-between mt-2.5">
-            <View>
-              <Text className="text-[10px] font-bold text-slate-400">Predicted Yield</Text>
-              <Text className="text-sm font-extrabold text-slate-900 mt-0.5">12,100 KG</Text>
-            </View>
-            <View>
-              <Text className="text-[10px] font-bold text-slate-400">YoY Growth</Text>
-              <Text className="text-sm font-extrabold text-brand-600 mt-0.5">+78% YoY</Text>
-            </View>
-            <View>
-              <Text className="text-[10px] font-bold text-slate-400">Pick Rate</Text>
-              <Text className="text-sm font-extrabold text-slate-900 mt-0.5">142 kg/hr</Text>
-            </View>
-          </Row>
-        </Card>
+            <Card className="mt-4">
+              <SectionTitle>TEMPERATURE & HUMIDITY</SectionTitle>
+              <Row className="mt-3 gap-4 flex-wrap">
+                <Row><View className="w-2.5 h-2.5 rounded-full bg-orange-500 mr-1.5" /><Text className="text-[11px] font-bold text-slate-600">Temperature (°C)</Text></Row>
+                <Row><View className="w-2.5 h-2.5 rounded-full bg-blue-500 mr-1.5" /><Text className="text-[11px] font-bold text-slate-600">Humidity (%)</Text></Row>
+              </Row>
+              <View className="mt-2">
+                {chronological.length < 2 ? (
+                  <Text className="text-xs text-slate-400 py-8 text-center">Not enough data yet.</Text>
+                ) : (
+                  <AutoWidth minHeight={200}>
+                    {(w) => (
+                      <LineChart
+                        width={w}
+                        height={200}
+                        series={[
+                          { points: chronological.map((r) => r.temperature ?? 0), color: colors.orange600 },
+                          { points: chronological.map((r) => r.humidity ?? 0), color: colors.blue500 },
+                        ]}
+                        xLabels={[]}
+                      />
+                    )}
+                  </AutoWidth>
+                )}
+              </View>
+            </Card>
 
-        {/* Weekly harvest bar chart */}
-        <Card className="mt-4">
-          <SectionTitle>WEEKLY HARVEST PROJECTION VS ACTUAL (TONS)</SectionTitle>
-          <Row className="mt-3 gap-4 flex-wrap">
-            <Row>
-              <View className="w-2.5 h-2.5 rounded-full bg-brand-500 mr-1.5" />
-              <Text className="text-[11px] font-bold text-slate-600">Actual Picked (Tons)</Text>
-            </Row>
-            <Row>
-              <View className="w-2.5 h-2.5 rounded-full bg-slate-300 mr-1.5" />
-              <Text className="text-[11px] font-bold text-slate-600">Predictive Baseline</Text>
-            </Row>
-            <Row>
-              <View className="w-2.5 h-2.5 rounded-full bg-purple-500 mr-1.5" />
-              <Text className="text-[11px] font-bold text-slate-600">Brix Index (°Bx)</Text>
-            </Row>
-          </Row>
-          <View className="mt-3">
-            <AutoWidth minHeight={190}>
-              {(w) => (
-                <BarChart
-                  width={w}
-                  height={200}
-                  bars={[14, 17, 16, 20, 22, 24, 27]}
-                  labels={['Wk 1', 'Wk 2', 'Wk 3', 'Wk 4', 'Wk 5', 'Wk 6', 'Wk 7']}
-                  color={colors.emerald500}
-                />
-              )}
-            </AutoWidth>
-          </View>
-        </Card>
+            <Card className="mt-4">
+              <SectionTitle>SOIL MOISTURE (IRRIGATION PUMP SENSOR)</SectionTitle>
+              <Text className="text-[10px] text-slate-500 mt-1">
+                This reading comes from the water pump's own soil-moisture sensor — the rover has no such sensor.
+              </Text>
+              <View className="mt-2">
+                {irrigationChrono.length < 2 ? (
+                  <Text className="text-xs text-slate-400 py-8 text-center">Not enough data yet.</Text>
+                ) : (
+                  <AutoWidth minHeight={190}>
+                    {(w) => (
+                      <LineChart
+                        width={w}
+                        height={190}
+                        series={[{ points: irrigationChrono.map((r) => r.soil_moisture ?? 0), color: colors.emerald500 }]}
+                        xLabels={[]}
+                      />
+                    )}
+                  </AutoWidth>
+                )}
+              </View>
+            </Card>
 
-        {/* Brix curve */}
-        <Card className="mt-4">
-          <SectionTitle>BRIX SUGAR ACCUMULATION CURVE</SectionTitle>
-          <View className="mt-3">
-            <AutoWidth minHeight={190}>
-              {(w) => (
-                <LineChart
-                  width={w}
-                  height={180}
-                  series={[
-                    { points: [42, 48, 55, 61, 68, 76, 84], color: colors.purple500 },
-                    { points: [38, 44, 50, 57, 64, 70, 78], color: colors.slate300 },
-                  ]}
-                  yLabels={['16°', '12°', '8°', '4°', '0°']}
-                />
-              )}
-            </AutoWidth>
-          </View>
-        </Card>
+            <Card className="mt-4">
+              <SectionTitle>PATROL TIME BY BLOCK (READING COUNT)</SectionTitle>
+              <Text className="text-[10px] text-slate-500 mt-1">
+                Number of sensor readings recorded while the robot was in each mapped block — a proxy for time spent per block.
+              </Text>
+              <View className="mt-3">
+                {blockCounts.length === 0 ? (
+                  <Text className="text-xs text-slate-400 py-8 text-center">No block-tagged readings yet.</Text>
+                ) : (
+                  <AutoWidth minHeight={180}>
+                    {(w) => (
+                      <BarChart
+                        width={w}
+                        height={180}
+                        bars={blockCounts.map(([, c]) => c)}
+                        labels={blockCounts.map(([id]) => id)}
+                        color={colors.emerald500}
+                      />
+                    )}
+                  </AutoWidth>
+                )}
+              </View>
+            </Card>
+          </>
+        )}
       </Page>
     </View>
   );

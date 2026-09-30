@@ -7,7 +7,7 @@ import { Card, GridItem, Row, SectionTitle, useIsDesktop } from './ui';
 
 export default function FieldMapCard() {
     const isDesktop = useIsDesktop();
-    const { location, trail, isDemo } = useRealtime();
+    const { location, trail, isDemo, fieldMap, currentBlock } = useRealtime();
 
     return (
         <GridItem span={isDesktop ? 4 : 12} cols={12}>
@@ -26,9 +26,13 @@ export default function FieldMapCard() {
 
                     <Row className="mt-2.5 justify-between">
                         <Row>
-                            <Text className="text-xs font-extrabold text-slate-800">Field A</Text>
-                            <Text className="text-slate-400 mx-2">•</Text>
-                            <Text className="text-xs font-extrabold text-slate-700">Block 2</Text>
+                            <Text className="text-xs font-extrabold text-slate-800">{fieldMap?.name ?? 'No field map'}</Text>
+                            {currentBlock && (
+                                <>
+                                    <Text className="text-slate-400 mx-2">•</Text>
+                                    <Text className="text-xs font-extrabold text-slate-700">{currentBlock.name}</Text>
+                                </>
+                            )}
                         </Row>
                         <Text className="text-[10px] font-bold text-slate-500">
                             {location

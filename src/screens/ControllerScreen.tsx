@@ -19,10 +19,14 @@ const DIRS: { dir: DriveDirection; icon: keyof typeof Feather.glyphMap; key: str
   { dir: 'right', icon: 'arrow-right', key: 'd' },
 ];
 
+/** Sensor position labels — the rover has exactly 3 ultrasonic sensors
+ *  (front/left/right), matching the server's `ultrasonic.distances_cm`
+ *  array order. There is no 4th/5th sensor on this hardware build. */
+const SENSOR_LABELS = ['Front', 'Left', 'Right'];
+
 export default function ControllerScreen() {
   const isDesktop = useIsDesktop();
-  const { status, battery, ultrasonic, currentBlock, isDemo } = useRealtime();
-  const [speed, setSpeed] = useState(50);
+  const { status, ultrasonic, currentBlock, isDemo, robotOnline } = useRealtime();
   const [active, setActive] = useState<DriveDirection | null>(null);
   const [teleop, setTeleop] = useState(false);
   const repeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -34,14 +38,14 @@ export default function ControllerScreen() {
     if (repeatRef.current) clearInterval(repeatRef.current);
     repeatRef.current = null;
     setActive(null);
-    drive('stop', 0);
+    drive('stop');
   }, []);
 
-  const startDrive = useCallback((dir: DriveDirection, spd: number) => {
+  const startDrive = useCallback((dir: DriveDirection) => {
     if (repeatRef.current) clearInterval(repeatRef.current);
     setActive(dir);
-    drive(dir, spd);
-    repeatRef.current = setInterval(() => drive(dir, spd), REPEAT_MS);
+    drive(dir);
+    repeatRef.current = setInterval(() => drive(dir), REPEAT_MS);
   }, []);
 
   const enableTeleop = async () => {
@@ -66,7 +70,7 @@ export default function ControllerScreen() {
         a: 'left', arrowleft: 'left',
         d: 'right', arrowright: 'right',
       };
-      if (map[k]) { e.preventDefault(); startDrive(map[k], speed); }
+      if (map[k]) { e.preventDefault(); startDrive(map[k]); }
       if (k === ' ') { e.preventDefault(); stopDrive(); }
     };
     const up = (e: KeyboardEvent) => {
@@ -76,11 +80,10 @@ export default function ControllerScreen() {
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
-  }, [teleop, speed, startDrive, stopDrive]);
+  }, [teleop, startDrive, stopDrive]);
 
   useEffect(() => () => stopDrive(), [stopDrive]);
 
-  const online = status?.state != null && status.state !== 'offline' && status.state !== 'fault';
   const minDist = ultrasonic ? Math.min(...ultrasonic.distances_cm) : null;
   const obstacle = minDist != null && minDist < 30;
 
@@ -88,7 +91,7 @@ export default function ControllerScreen() {
     <TouchableOpacity
       key={d.dir}
       disabled={!teleop}
-      onPressIn={() => startDrive(d.dir, speed)}
+      onPressIn={() => startDrive(d.dir)}
       onPressOut={stopDrive}
       activeOpacity={0.7}
       className={`w-20 h-20 lg:w-24 lg:h-24 rounded-2xl items-center justify-center border-2 ${
@@ -144,32 +147,12 @@ export default function ControllerScreen() {
               {padBtn(DIRS[2])}
             </View>
 
-            {/* Speed selector */}
-            <Row className="justify-between mt-5">
-              <Text className="text-xs font-extrabold text-slate-700">THROTTLE</Text>
-              <Text className="text-xs font-extrabold text-brand-700">{speed}%</Text>
-            </Row>
-            <Row className="gap-2 mt-2">
-              {[25, 50, 75, 100].map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  onPress={() => setSpeed(s)}
-                  activeOpacity={0.8}
-                  className={`flex-1 py-2 rounded-lg border items-center ${
-                    speed === s ? 'bg-brand-600 border-brand-600' : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  <Text className={`text-[11px] font-extrabold ${speed === s ? 'text-white' : 'text-slate-600'}`}>{s}%</Text>
-                </TouchableOpacity>
-              ))}
-            </Row>
-
             {/* Mode toggle */}
             <TouchableOpacity
               onPress={teleop ? disableTeleop : enableTeleop}
               disabled={mode.pending}
               activeOpacity={0.85}
-              className={`flex-row items-center justify-center rounded-xl py-3 mt-4 ${
+              className={`flex-row items-center justify-center rounded-xl py-3 mt-5 ${
                 teleop ? 'bg-slate-700' : 'bg-brand-600'
               } ${mode.pending ? 'opacity-60' : ''}`}
             >
@@ -187,13 +170,9 @@ export default function ControllerScreen() {
 
             <Row className="justify-between mt-3">
               <Text className="text-xs font-semibold text-slate-500">Robot</Text>
-              <Text className={`text-xs font-extrabold ${online ? 'text-brand-700' : 'text-rose-600'}`}>
-                {online ? (status?.state ?? '').toUpperCase() : 'OFFLINE'}
+              <Text className={`text-xs font-extrabold ${robotOnline ? 'text-brand-700' : 'text-rose-600'}`}>
+                {robotOnline ? (status?.state ?? '').toUpperCase() : 'OFFLINE'}
               </Text>
-            </Row>
-            <Row className="justify-between mt-2.5">
-              <Text className="text-xs font-semibold text-slate-500">Battery</Text>
-              <Text className="text-xs font-extrabold text-slate-900">{battery ? `${battery.level}%` : '—'}</Text>
             </Row>
             <Row className="justify-between mt-2.5">
               <Text className="text-xs font-semibold text-slate-500">Current Block</Text>
@@ -202,15 +181,16 @@ export default function ControllerScreen() {
               </Text>
             </Row>
 
-            {/* Ultrasonic bars: index = sensor position on the rover */}
+            {/* Ultrasonic bars: 3 fixed sensors — front, left, right */}
             <Text className="text-[10px] font-extrabold text-slate-400 mt-4 tracking-wide">ULTRASONIC SENSORS (cm)</Text>
             <View className="mt-2 gap-1.5">
-              {(ultrasonic?.distances_cm ?? [null, null, null, null, null]).map((d, i) => {
+              {SENSOR_LABELS.map((label, i) => {
+                const d = ultrasonic?.distances_cm?.[i] ?? null;
                 const danger = d != null && d < 30;
                 const pct = d != null ? Math.min(100, (d / 300) * 100) : 0;
                 return (
-                  <Row key={i} className="items-center">
-                    <Text className="text-[10px] font-bold text-slate-500 w-8">S{i + 1}</Text>
+                  <Row key={label} className="items-center">
+                    <Text className="text-[10px] font-bold text-slate-500 w-12">{label}</Text>
                     <View className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
                       <View
                         className={`h-full rounded-full ${danger ? 'bg-rose-500' : 'bg-brand-500'}`}

@@ -1,15 +1,13 @@
 import React from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
+import { View, Text, Image, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import Header from '../components/Header';
-import { Card, SectionTitle, Badge, IconBox, Row, PillButton, ProgressBar, Page, CardRail } from '../components/ui';
-import { LineChart, AutoWidth } from '../components/charts';
+import { Card, SectionTitle, Badge, IconBox, Row, PillButton, ProgressBar, Page } from '../components/ui';
 import { colors } from '../theme';
 import { useRealtime } from '../realtime/RealtimeContext';
 import {
-  calibrateGimbal,
   changeRoverMode,
-  deployMission,
+  capturePhoto,
   emergencyStop,
   pausePatrol,
   returnToBase,
@@ -19,189 +17,120 @@ import {
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 
-const KPIS = [
-  {
-    label: 'Battery & Solar',
-    value: '82%',
-    sub: '+94W Solar',
-    note: 'Est. 4h 15m remaining',
-    icon: <MaterialCommunityIcons name="battery-charging-80" size={20} color={colors.emerald600} />,
-    iconBg: 'bg-brand-100',
-  },
-  {
-    label: 'Speed & Precision',
-    value: '1.4 m/s',
-    sub: 'RTK Fix (±1.2 cm)',
-    note: 'Centimeter navigation',
-    icon: <Feather name="navigation" size={18} color={colors.blue600} />,
-    iconBg: 'bg-blue-100',
-  },
-  {
-    label: 'Sensors & AI',
-    value: '100%',
-    sub: 'Ultrasonic & GPS',
-    note: 'Operational',
-    icon: <MaterialCommunityIcons name="radar" size={20} color={colors.purple600} />,
-    iconBg: 'bg-purple-100',
-  },
-  {
-    label: "Today's Progress",
-    value: '6.8 km',
-    sub: '14 of 18 Rows Scanned',
-    note: '78% route complete',
-    icon: <Feather name="trending-up" size={18} color={colors.orange600} />,
-    iconBg: 'bg-orange-100',
-  },
-];
-
-const CONTROLS: { label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }[] = [
-  { label: 'Return to Base', icon: 'home-import-outline' },
-  { label: 'Pause Patrol', icon: 'pause-circle-outline' },
-  { label: 'Manual Tele-Op', icon: 'gamepad-variant-outline' },
-  { label: 'Calibrate Gimbal', icon: 'crosshairs-gps' },
-];
-
-const DIAGNOSTICS = [
-  { label: 'Motor Hub Temp', value: '34°C', note: 'Normal', noteClass: 'text-brand-600' },
-  { label: 'Cell Balance', value: '3.82 V', note: 'Balanced', noteClass: 'text-brand-600' },
-  { label: 'Lens Clarity', value: '98%', note: 'Clean', noteClass: 'text-brand-600' },
-  { label: 'LiDAR Latency', value: '12 ms', note: 'Optimal', noteClass: 'text-blue-600' },
-];
-
-function fmtMinutes(min?: number): string {
-  if (min == null) return '—';
-  return `Est. ${Math.floor(min / 60)}h ${min % 60}m remaining`;
+function timeAgo(ts: number | null | undefined): string {
+  if (!ts) return '—';
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 5) return 'Just now';
+  if (s < 60) return `${s}s ago`;
+  return `${Math.round(s / 60)}m ago`;
 }
 
 export default function RobotScreen() {
-  const { telemetry, battery, status, location, isDemo } = useRealtime();
+  const { status, location, sensors, ultrasonic, mission, isDemo, robotOnline, pumpOnline, devices } = useRealtime();
 
-  // Typed commands with pending state + ack feedback
   const eStop = useCommand(emergencyStop);
-  const deploy = useCommand(deployMission);
   const rtb = useCommand(returnToBase);
   const pause = useCommand(pausePatrol);
   const resume = useCommand(startPatrol);
   const teleop = useCommand(setManualTeleop);
-  const gimbal = useCommand(calibrateGimbal);
+  const photo = useCommand(capturePhoto);
   const mode = useCommand(changeRoverMode);
 
-  const isPaused = status?.state === 'idle' || status?.state === 'charging';
+  const isPaused = status?.state === 'idle';
+  const fault = status?.state === 'fault';
 
-  const controlHandlers: Record<string, { run: () => void; pending: boolean }> = {
-    'Return to Base': { run: () => rtb.run(), pending: rtb.pending },
-    'Pause Patrol': {
+  const CONTROLS: { label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; run: () => void; pending: boolean }[] = [
+    { label: 'Return to Base', icon: 'home-import-outline', run: () => rtb.run(), pending: rtb.pending },
+    {
+      label: isPaused ? 'Resume Patrol' : 'Pause Patrol',
+      icon: isPaused ? 'play-circle-outline' : 'pause-circle-outline',
       run: () => (isPaused ? resume.run() : pause.run()),
       pending: pause.pending || resume.pending,
     },
-    'Manual Tele-Op': { run: () => teleop.run(true), pending: teleop.pending },
-    'Calibrate Gimbal': { run: () => gimbal.run(), pending: gimbal.pending },
-  };
-  const controlsResult =
-    rtb.result ?? pause.result ?? resume.result ?? teleop.result ?? gimbal.result ?? mode.result;
+    { label: 'Manual Tele-Op', icon: 'gamepad-variant-outline', run: () => teleop.run(true), pending: teleop.pending },
+    { label: 'Capture Photo', icon: 'camera-outline', run: () => photo.run(), pending: photo.pending },
+  ];
+  const controlsResult = rtb.result ?? pause.result ?? resume.result ?? teleop.result ?? photo.result ?? mode.result;
 
-  const online = status?.state != null && status.state !== 'offline' && status.state !== 'fault';
-  const fault = status?.state === 'fault';
+  const [d1, d2, d3] = ultrasonic?.distances_cm ?? [];
 
-  const kpis = KPIS.map((k) => {
-    switch (k.label) {
-      case 'Battery & Solar':
-        return battery
-          ? {
-              ...k,
-              value: `${battery.level}%`,
-              sub: battery.solarWatts != null ? `+${battery.solarWatts}W Solar` : k.sub,
-              note: fmtMinutes(battery.minutesRemaining),
-            }
-          : k;
-      case 'Speed & Precision':
-        return telemetry
-          ? {
-              ...k,
-              value: `${telemetry.speed.toFixed(1)} m/s`,
-              sub: location ? `${location.satellites} satellites locked` : k.sub,
-            }
-          : k;
-      case 'Sensors & AI':
-        return location ? { ...k, value: `${location.satellites} sats`, sub: 'GNSS & Ultrasonic', note: 'Operational' } : k;
-      case "Today's Progress":
-        return telemetry?.distanceKm != null
-          ? {
-              ...k,
-              value: `${telemetry.distanceKm.toFixed(1)} km`,
-              sub:
-                telemetry.rowsDone != null && telemetry.rowsTotal != null
-                  ? `${telemetry.rowsDone} of ${telemetry.rowsTotal} Rows Scanned`
-                  : k.sub,
-              note: telemetry.routeProgress != null ? `${telemetry.routeProgress}% route complete` : k.note,
-            }
-          : k;
-      default:
-        return k;
-    }
-  });
-
-  const progress = telemetry?.routeProgress ?? 78;
-  const rowsLabel =
-    telemetry?.rowsDone != null && telemetry?.rowsTotal != null
-      ? `${telemetry.rowsDone} of ${telemetry.rowsTotal} Rows Scanned`
-      : '14 of 18 Rows Scanned';
-
+  const kpis = [
+    {
+      label: 'GPS FIX',
+      value: location ? `${location.satellites} sats` : '—',
+      sub: location ? `Alt ${location.altitude.toFixed(1)}m` : 'No fix yet',
+      icon: <Feather name="crosshair" size={18} color={colors.blue600} />,
+      iconBg: 'bg-blue-100',
+    },
+    {
+      label: 'ENVIRONMENT',
+      value: sensors ? `${sensors.temperature.toFixed(1)}°C` : '—',
+      sub: sensors ? `${sensors.humidity != null ? `${Math.round(sensors.humidity)}% RH` : ''}${sensors.isRaining ? ' • Raining' : ''}` : 'No data yet',
+      icon: <MaterialCommunityIcons name="thermometer" size={20} color={colors.orange600} />,
+      iconBg: 'bg-orange-100',
+    },
+    {
+      label: 'OBSTACLE SENSORS',
+      value: d1 != null ? `${Math.round(d1)}cm` : '—',
+      sub: d2 != null && d3 != null ? `L ${Math.round(d2)}cm • R ${Math.round(d3)}cm` : 'No reading yet',
+      icon: <MaterialCommunityIcons name="radar" size={20} color={colors.purple600} />,
+      iconBg: 'bg-purple-100',
+    },
+    {
+      label: 'MISSION PROGRESS',
+      value: mission ? `${mission.progress ?? 0}%` : 'None',
+      sub: mission ? `Waypoint ${mission.currentWaypoint ?? 0}/${mission.totalWaypoints ?? mission.waypoints.length}` : 'No mission deployed',
+      icon: <Feather name="trending-up" size={18} color={colors.emerald600} />,
+      iconBg: 'bg-brand-100',
+    },
+  ];
 
   return (
     <View className="flex-1 bg-surface">
       <Header title="Robot Fleet" />
       <Page>
         <Text className="text-[10px] font-extrabold text-brand-700 tracking-wider">
-          AUTONOMOUS AGRICULTURAL FLEET • MISSION #AM-2026-08
+          AUTONOMOUS CROP-MONITORING ROBOT
         </Text>
-        <Text className="text-[22px] font-extrabold text-slate-900 mt-1.5">Robot Fleet Management 🤖</Text>
+        <Text className="text-[22px] font-extrabold text-slate-900 mt-1.5">Robot Control 🤖</Text>
         <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
-          Real-time Telemetry, Sensor Diagnostics & Autonomous Navigation Control
+          Live status, real sensor readings, and mission control for the rover.
         </Text>
 
-        <Row className="mt-3 gap-2.5">
-          <Badge label={online ? '1 Online' : '0 Online'} className="bg-brand-50" textClassName="text-brand-700" dotClassName="bg-brand-500" />
-          <Badge label={status?.state === 'idle' ? '1 Idle' : '0 Idle'} className="bg-slate-100" textClassName="text-slate-600" dotClassName="bg-slate-400" />
-          <Badge label={fault ? '1 Fault' : '0 Fault'} className="bg-rose-100" textClassName="text-rose-600" dotClassName="bg-rose-500" />
-          {isDemo && (
-            <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />
-          )}
+        <Row className="mt-3 gap-2.5 flex-wrap">
+          <Badge label={robotOnline ? 'Robot Online' : 'Robot Offline'} className={robotOnline ? 'bg-brand-50' : 'bg-slate-100'} textClassName={robotOnline ? 'text-brand-700' : 'text-slate-600'} dotClassName={robotOnline ? 'bg-brand-500' : 'bg-slate-400'} />
+          <Badge label={pumpOnline ? 'Pump Online' : 'Pump Offline'} className={pumpOnline ? 'bg-blue-50' : 'bg-slate-100'} textClassName={pumpOnline ? 'text-blue-700' : 'text-slate-600'} dotClassName={pumpOnline ? 'bg-blue-500' : 'bg-slate-400'} />
+          {fault && <Badge label="FAULT" className="bg-rose-100" textClassName="text-rose-600" dotClassName="bg-rose-500" />}
+          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
         </Row>
 
-        <Row className="mt-4 gap-2.5 lg:max-w-[560px]">
+        <Row className="mt-4 gap-2.5 lg:max-w-[420px]">
           <PillButton
             label={eStop.pending ? 'Stopping…' : 'Emergency Stop (E-Stop)'}
             className={`flex-1 bg-rose-600 ${eStop.pending ? 'opacity-60' : ''}`}
             textClassName="text-white"
             onPress={() => eStop.run()}
           />
-          <PillButton
-            label={deploy.pending ? 'Deploying…' : 'Deploy New Mission'}
-            className={`flex-1 bg-brand-600 ${deploy.pending ? 'opacity-60' : ''}`}
-            textClassName="text-white"
-            onPress={() => deploy.run({ name: `Mission ${new Date().toISOString().slice(0, 10)}` })}
-          />
         </Row>
-        <ActionFeedback result={eStop.result ?? deploy.result} />
+        <ActionFeedback result={eStop.result} />
 
         {/* Active unit */}
         <Card className="mt-5">
           <Row className="justify-between">
-            <SectionTitle>ACTIVE UNIT</SectionTitle>
+            <SectionTitle>ROBOT STATUS</SectionTitle>
             <Badge
-              label={online ? 'ONLINE' : fault ? 'FAULT' : status ? 'OFFLINE' : 'WAITING'}
-              className={online ? 'bg-brand-50' : fault ? 'bg-rose-100' : 'bg-slate-100'}
-              textClassName={online ? 'text-brand-700' : fault ? 'text-rose-600' : 'text-slate-600'}
-              dotClassName={online ? 'bg-brand-500' : fault ? 'bg-rose-500' : 'bg-slate-400'}
+              label={robotOnline ? 'ONLINE' : fault ? 'FAULT' : 'OFFLINE'}
+              className={robotOnline ? 'bg-brand-50' : fault ? 'bg-rose-100' : 'bg-slate-100'}
+              textClassName={robotOnline ? 'text-brand-700' : fault ? 'text-rose-600' : 'text-slate-600'}
+              dotClassName={robotOnline ? 'bg-brand-500' : fault ? 'bg-rose-500' : 'bg-slate-400'}
             />
           </Row>
           <Row className="mt-3">
             <Image source={require('../../assets/images/rover-alpha.jpg')} className="w-12 h-12 rounded-xl bg-slate-100" />
             <View className="ml-3">
-              <Text className="text-[15px] font-extrabold text-slate-900">Rover Alpha-01</Text>
+              <Text className="text-[15px] font-extrabold text-slate-900">Rover-01</Text>
               <Text className="text-xs text-brand-700 font-semibold mt-0.5">
-                {status?.message ?? 'Patrolling • Row #14'}
+                {status?.message ?? (status?.state ? status.state.charAt(0).toUpperCase() + status.state.slice(1) : 'Waiting for connection…')}
               </Text>
             </View>
           </Row>
@@ -210,13 +139,8 @@ export default function RobotScreen() {
             className="w-full h-[190px] lg:h-[320px] rounded-xl mt-3.5"
             resizeMode="cover"
           />
-          <Text className="text-[11px] font-bold text-slate-500 mt-2">
-            Firmware OS {status?.firmware ?? 'v4.8.2-AgOS'} • Hardware SN: ROV-2026-X9
-          </Text>
-          <Text className="text-[11px] font-bold text-slate-400 mt-1">
-            {telemetry
-              ? `HDG ${String(telemetry.heading).padStart(3, '0')}° • Pitch ${telemetry.pitch != null ? (telemetry.pitch >= 0 ? '+' : '') + telemetry.pitch : '—'}°`
-              : 'HDG 042° NE • Pitch +1.4°'}
+          <Text className="text-[11px] font-bold text-slate-400 mt-2">
+            Last seen: {timeAgo(devices['robot-01']?.lastSeen)}
           </Text>
         </Card>
 
@@ -228,7 +152,6 @@ export default function RobotScreen() {
               <Text className="text-[11px] font-bold text-slate-500 mt-2.5">{k.label}</Text>
               <Text className="text-xl font-extrabold text-slate-900 mt-0.5">{k.value}</Text>
               <Text className="text-[11px] font-bold text-brand-700 mt-0.5">{k.sub}</Text>
-              <Text className="text-[10px] text-slate-400 mt-0.5">{k.note}</Text>
             </Card>
           ))}
         </View>
@@ -237,52 +160,36 @@ export default function RobotScreen() {
         <Card className="mt-4">
           <SectionTitle>LIVE UNIT CONTROLS</SectionTitle>
           <View className="flex-row flex-wrap gap-2.5 mt-3">
-            {CONTROLS.map((c) => {
-              const handler = controlHandlers[c.label];
-              const label =
-                c.label === 'Pause Patrol' && isPaused ? 'Resume Patrol' : c.label;
-              return (
-                <TouchableOpacity
-                  key={c.label}
-                  onPress={handler.run}
-                  disabled={handler.pending}
-                  activeOpacity={0.75}
-                  className={`w-[47.5%] lg:w-[23%] grow bg-brand-50 border border-brand-100 rounded-xl py-4 items-center gap-1.5 ${
-                    handler.pending ? 'opacity-50' : ''
-                  }`}
-                >
-                  <MaterialCommunityIcons
-                    name={c.label === 'Pause Patrol' && isPaused ? 'play-circle-outline' : c.icon}
-                    size={22}
-                    color={colors.emerald700}
-                  />
-                  <Text className="text-[11px] font-extrabold text-brand-800 text-center">
-                    {handler.pending ? 'Sending…' : label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            {CONTROLS.map((c) => (
+              <TouchableOpacity
+                key={c.label}
+                onPress={c.run}
+                disabled={c.pending}
+                activeOpacity={0.75}
+                className={`w-[47.5%] lg:w-[23%] grow bg-brand-50 border border-brand-100 rounded-xl py-4 items-center gap-1.5 ${c.pending ? 'opacity-50' : ''}`}
+              >
+                <MaterialCommunityIcons name={c.icon} size={22} color={colors.emerald700} />
+                <Text className="text-[11px] font-extrabold text-brand-800 text-center">
+                  {c.pending ? 'Sending…' : c.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
           <ActionFeedback result={controlsResult} />
-          {/* Operator mode switch */}
+          {/* Operator mode switch: the hardware only supports fully-autonomous
+              patrol or paused-for-manual-drive — no other modes exist. */}
           <View className="flex-row flex-wrap gap-2 mt-3">
-            {(['autonomous', 'manual', 'paused', 'charging'] as const).map((m) => (
+            {(['autonomous', 'manual'] as const).map((m) => (
               <TouchableOpacity
                 key={m}
                 onPress={() => mode.run(m)}
                 disabled={mode.pending}
                 activeOpacity={0.8}
                 className={`px-3 py-[7px] rounded-lg border ${
-                  (status?.mode ?? '').toLowerCase().includes(m)
-                    ? 'bg-brand-600 border-brand-600'
-                    : 'bg-slate-50 border-slate-200'
+                  status?.mode === m ? 'bg-brand-600 border-brand-600' : 'bg-slate-50 border-slate-200'
                 }`}
               >
-                <Text
-                  className={`text-[11px] font-bold capitalize ${
-                    (status?.mode ?? '').toLowerCase().includes(m) ? 'text-white' : 'text-slate-600'
-                  }`}
-                >
+                <Text className={`text-[11px] font-bold capitalize ${status?.mode === m ? 'text-white' : 'text-slate-600'}`}>
                   {m}
                 </Text>
               </TouchableOpacity>
@@ -290,70 +197,48 @@ export default function RobotScreen() {
           </View>
         </Card>
 
-        {/* Diagnostics */}
+        {/* Mission progress */}
         <Card className="mt-4">
-          <SectionTitle>UNIT DIAGNOSTICS</SectionTitle>
+          <SectionTitle>MISSION PROGRESS</SectionTitle>
+          {mission ? (
+            <>
+              <Row className="justify-between mt-3">
+                <Text className="text-xs font-bold text-slate-600">Waypoint {mission.currentWaypoint ?? 0} of {mission.totalWaypoints ?? mission.waypoints.length}</Text>
+                <Text className="text-xs font-extrabold text-brand-700">{mission.progress ?? 0}%</Text>
+              </Row>
+              <View className="mt-2">
+                <ProgressBar value={mission.progress ?? 0} barClassName="bg-brand-500" />
+              </View>
+              {mission.message && <Text className="text-[11px] text-slate-500 mt-2">{mission.message}</Text>}
+            </>
+          ) : (
+            <Text className="text-xs text-slate-500 mt-2">No mission deployed. Deploy one from the Location screen.</Text>
+          )}
+        </Card>
+
+        {/* Real sensor feed — the only 4 real data sources this robot has:
+            raindrop, temperature, camera (photos), GPS. */}
+        <Card className="mt-4">
+          <SectionTitle>LIVE SENSOR FEED</SectionTitle>
+          <Text className="text-[11px] text-slate-500 mt-1">
+            Direct readings from the rover — temperature, raindrop sensor, and ultrasonic obstacle sensors.
+          </Text>
           <View className="mt-2">
-            {DIAGNOSTICS.map((d, i) => (
-              <Row key={d.label} className={`justify-between py-3 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
-                <Text className="text-xs font-bold text-slate-600">{d.label}</Text>
-                <Row>
-                  <Text className="text-[13px] font-extrabold text-slate-900">{d.value} </Text>
-                  <Text className={`text-[11px] font-bold ${d.noteClass}`}>{d.note}</Text>
-                </Row>
+            {[
+              { label: 'Temperature', value: sensors ? `${sensors.temperature.toFixed(1)}°C` : '—' },
+              { label: 'Humidity', value: sensors?.humidity != null ? `${Math.round(sensors.humidity)}%` : '—' },
+              { label: 'Raindrop sensor', value: sensors?.rainDrop != null ? `${Math.round(sensors.rainDrop)}%${sensors.isRaining ? ' (raining)' : ''}` : '—' },
+              { label: 'Ultrasonic — Front', value: d1 != null ? `${Math.round(d1)} cm` : '—' },
+              { label: 'Ultrasonic — Left', value: d2 != null ? `${Math.round(d2)} cm` : '—' },
+              { label: 'Ultrasonic — Right', value: d3 != null ? `${Math.round(d3)} cm` : '—' },
+              { label: 'Current block', value: sensors?.blockId ? `${sensors.blockId} (${sensors.plant ?? '—'})` : 'Not in a mapped block' },
+            ].map((row, i) => (
+              <Row key={row.label} className={`justify-between py-2.5 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
+                <Text className="text-xs font-bold text-slate-600">{row.label}</Text>
+                <Text className="text-[13px] font-extrabold text-slate-900">{row.value}</Text>
               </Row>
             ))}
           </View>
-        </Card>
-
-        {/* Mission progress */}
-        <Card className="mt-4">
-          <SectionTitle>TODAY'S MISSION PROGRESS</SectionTitle>
-          <Row className="justify-between mt-3">
-            <Text className="text-xs font-bold text-slate-600">{rowsLabel}</Text>
-            <Text className="text-xs font-extrabold text-brand-700">{progress}%</Text>
-          </Row>
-          <View className="mt-2">
-            <ProgressBar value={progress} barClassName="bg-brand-500" />
-          </View>
-        </Card>
-
-        {/* Sensor stream */}
-        <Card className="mt-4">
-          <SectionTitle>REAL-TIME SENSOR STREAMS</SectionTitle>
-          <Text className="text-[11px] text-slate-500 mt-1">
-            Live 100Hz agricultural telemetry stream from Field A
-          </Text>
-          <Row className="mt-3 gap-5">
-            <Row>
-              <View className="w-2.5 h-2.5 rounded-full bg-brand-500 mr-1.5" />
-              <Text className="text-[11px] font-bold text-slate-600">NDVI Index (x100)</Text>
-            </Row>
-            <Row>
-              <View className="w-2.5 h-2.5 rounded-full bg-blue-500 mr-1.5" />
-              <Text className="text-[11px] font-bold text-slate-600">Soil Moisture (%)</Text>
-            </Row>
-          </Row>
-          <View className="mt-2">
-            <AutoWidth minHeight={190}>
-              {(w) => (
-                <LineChart
-                  width={w}
-                  height={190}
-                  series={[
-                    { points: [82, 86, 84, 88, 87, 90, 88], color: colors.emerald500 },
-                    { points: [58, 62, 60, 66, 63, 64, 62], color: colors.blue500 },
-                  ]}
-                />
-              )}
-            </AutoWidth>
-          </View>
-          <Badge
-            label="NDVI SCAN  0.88 Healthy"
-            className="bg-brand-50 mt-3"
-            textClassName="text-brand-700"
-            dotClassName="bg-brand-500"
-          />
         </Card>
       </Page>
     </View>

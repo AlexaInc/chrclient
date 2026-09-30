@@ -1,266 +1,226 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
-import { Card, SectionTitle, Badge, IconBox, Row, Page, CardRail } from '../components/ui';
-import KpiRail from '../components/KpiRail';
+import { Card, SectionTitle, Badge, Row, Page } from '../components/ui';
 import { colors } from '../theme';
-import {
-  captureRawBurst,
-  runPredictiveModel,
-  setCameraChannel,
-  setCameraZoom,
-  setRecording,
-} from '../scripts/Commands';
+import { capturePhoto, captureBurst } from '../scripts/Commands';
 import { useRealtime } from '../realtime/RealtimeContext';
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
-import { CameraChannel, CameraZoom } from '../types/actions';
-import FilterTabs from '../components/FilterTabs';
+import { useAuth } from '../auth/AuthContext';
+import { fetchReports, ReportDto, scanImageUrl } from '../scripts/Api';
 
-const KPIS = [
-  {
-    label: 'INFERENCE LATENCY',
-    value: '18.4 ms',
-    sub: 'YOLOv9 Edge TensorRT',
-    note: 'Framerate: 60 FPS Stream',
-    iconBg: 'bg-amber-100',
-    icon: <Feather name="zap" size={18} color={colors.amber600} />,
-  },
-  {
-    label: 'PATHOGEN STATUS',
-    value: '1 Flagged',
-    sub: 'Early Blight (Leaf 045)',
-    note: 'Priority: Action Req',
-    iconBg: 'bg-rose-100',
-    icon: <Feather name="alert-octagon" size={18} color={colors.rose600} />,
-  },
-  {
-    label: 'FRUIT CENSUS',
-    value: '48 Ripe / 112 Grn',
-    sub: '82% Maturity Index',
-    note: 'Yield Trend: +14% vs yesterday',
-    iconBg: 'bg-brand-100',
-    icon: <MaterialCommunityIcons name="fruit-cherries" size={20} color={colors.emerald600} />,
-  },
-  {
-    label: 'NDVI VIGOR',
-    value: '0.88 Avg',
-    sub: 'Optimal Photosynthesis',
-    note: 'Health Bracket: High Vigor (Tier 1)',
-    iconBg: 'bg-brand-100',
-    icon: <MaterialCommunityIcons name="leaf-circle-outline" size={20} color={colors.emerald600} />,
-  },
-  {
-    label: 'OPTICS CHANNEL',
-    value: '4K RGB + NIR',
-    sub: 'Dual Stereo Mast Cam',
-    note: 'Optics Cleanliness: 99% Pristine',
-    iconBg: 'bg-blue-100',
-    icon: <Feather name="video" size={18} color={colors.blue600} />,
-  },
-];
-
-const CHANNELS = ['RGB Color', 'NIR Band', 'NDVI Heatmap', 'Thermal/H₂O'];
-const CHANNEL_IDS: CameraChannel[] = ['rgb', 'nir', 'ndvi', 'thermal'];
-const ZOOMS = ['1x', '2x', '4x', 'MACRO'];
-const ZOOM_IDS: CameraZoom[] = ['1x', '2x', '4x', 'macro'];
-
-const DETECTIONS = [
-  {
-    tag: 'TOMATO_CLUSTER_A [Ripe: 99.2%]',
-    sub: 'Yield Est: 420g • BRIX ~5.4',
-    textClass: 'text-brand-600',
-    boxClass: 'bg-brand-50 border-brand-600',
-  },
-  {
-    tag: 'ID: LEAF_045 [EARLY BLIGHT 94.1%]',
-    sub: 'Stage 1 Fungal Lesion • Micro-Spray Rec.',
-    textClass: 'text-rose-600',
-    boxClass: 'bg-rose-100 border-rose-600',
-  },
-];
+function timeAgo(ts: number | null | undefined): string {
+  if (!ts) return '—';
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 5) return 'Just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  return `${Math.round(s / 3600)}h ago`;
+}
 
 export default function AIScanScreen() {
-  const [channel, setChannel] = useState(0);
-  const [zoom, setZoom] = useState(0);
-  const [recording, setRecordingState] = useState(false);
+  const { currentBlock, status, latestScan, latestReport, mission, isDemo, robotOnline } = useRealtime();
+  const { token } = useAuth();
+  const burstCmd = useCommand(captureBurst);
+  const photoCmd = useCommand(capturePhoto);
 
-  const channelCmd = useCommand(setCameraChannel);
-  const zoomCmd = useCommand(setCameraZoom);
-  const recordCmd = useCommand(setRecording);
-  const burstCmd = useCommand(captureRawBurst);
-  const analyzeCmd = useCommand(runPredictiveModel);
-  const { currentBlock, status } = useRealtime();
+  const [fallbackReport, setFallbackReport] = useState<ReportDto | null>(null);
+  const [loadingReport, setLoadingReport] = useState(false);
 
-  const selectChannel = (i: number) => {
-    setChannel(i); // optimistic UI
-    channelCmd.run(CHANNEL_IDS[i]);
-  };
-  const selectZoom = (i: number) => {
-    setZoom(i);
-    zoomCmd.run(ZOOM_IDS[i]);
-  };
-  const toggleRecording = async () => {
-    const next = !recording;
-    const res = await recordCmd.run(next);
-    if (res.success) setRecordingState(next);
-  };
+  // On first load, pull the most recent finished report from the server so
+  // there's something to show even if no mission has completed yet in this
+  // session. Live `latestReport` (pushed the instant a patrol finishes)
+  // always takes priority once it arrives.
+  useEffect(() => {
+    if (isDemo || !token) return;
+    setLoadingReport(true);
+    fetchReports(token)
+      .then((res) => setFallbackReport(res.reports[0] ?? null))
+      .catch((e) => console.warn('[AIScanScreen] failed to load reports:', e?.message ?? e))
+      .finally(() => setLoadingReport(false));
+  }, [isDemo, token]);
+
+  const report = latestReport
+    ? { id: latestReport.id, patrol_id: latestReport.report.patrolId, trigger_type: 'auto' as const, summary: `Mission ${latestReport.missionId} completed with ${latestReport.report.imageCount} analyzed images`, created_at: latestReport.report.completedAt, report: latestReport.report }
+    : fallbackReport;
+
+  // Live capture progress during an active patrol — deliberately shows ONLY
+  // a running count of photos captured, never per-image predictions. The
+  // only place classification results are shown is the finished batch
+  // report below, exactly as the AI-scan feature is designed to work.
+  const patrolling = status?.state === 'patrolling';
+  const [capturedCount, setCapturedCount] = useState(0);
+  useEffect(() => {
+    if (!mission) return;
+    setCapturedCount(0);
+  }, [mission?.missionId]);
+  useEffect(() => {
+    if (!latestScan || !mission || latestScan.missionId !== mission.missionId) return;
+    setCapturedCount((c) => c + 1);
+  }, [latestScan]);
+
+  const canCapture = robotOnline && !!currentBlock;
 
   return (
     <View className="flex-1 bg-surface">
       <Header title="AI Scan" />
       <Page>
         <Text className="text-[22px] font-extrabold text-slate-900">
-          Edge AI Inference & Classification Stream
+          AI Crop Health Scan
         </Text>
         <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
-          Images are collected during patrol and analyzed in a batch when the patrol completes
+          The robot photographs each plant while patrolling a mapped block. All photos are analyzed together
+          automatically once the patrol finishes — the result below is that finished report.
         </Text>
 
-        {/* KPIs */}
-        <KpiRail items={KPIS} />
+        <Row className="mt-3 gap-2 flex-wrap">
+          <Badge
+            label={patrolling ? 'PATROL IN PROGRESS' : 'IDLE'}
+            className={patrolling ? 'bg-amber-100' : 'bg-brand-50'}
+            textClassName={patrolling ? 'text-amber-700' : 'text-brand-700'}
+            dotClassName={patrolling ? 'bg-amber-500' : 'bg-brand-500'}
+          />
+          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
+        </Row>
 
-        {/* Batch analysis: model auto-selected by the plant of the active block */}
+        {/* Live capture progress — count only, no per-image analysis UI */}
+        {patrolling && (
+          <Card className="mt-4">
+            <Row className="justify-between items-center">
+              <SectionTitle>CAPTURING PHOTOS</SectionTitle>
+              <ActivityIndicator size="small" color={colors.emerald600} />
+            </Row>
+            <Text className="text-[11px] text-slate-500 mt-1">
+              Photos are being taken as the robot reaches each plant. Analysis begins automatically once the patrol completes.
+            </Text>
+            <Row className="justify-between mt-3">
+              <Text className="text-xs font-semibold text-slate-500">Mission waypoint</Text>
+              <Text className="text-xs font-extrabold text-slate-900">{mission?.currentWaypoint ?? 0} / {mission?.waypoints.length ?? '—'}</Text>
+            </Row>
+            <Row className="justify-between mt-2">
+              <Text className="text-xs font-semibold text-slate-500">Photos captured so far</Text>
+              <Text className="text-xs font-extrabold text-slate-900">{capturedCount}</Text>
+            </Row>
+            {latestScan && (
+              <Row className="justify-between mt-2">
+                <Text className="text-xs font-semibold text-slate-500">Last photo captured</Text>
+                <Text className="text-xs font-extrabold text-slate-900">{latestScan.blockName ?? latestScan.blockId} • {timeAgo(latestScan.capturedAt)}</Text>
+              </Row>
+            )}
+          </Card>
+        )}
+
+        {/* Manual / ad-hoc capture — a real hardware capability, separate
+            from the automatic per-waypoint patrol capture. */}
         <Card className="mt-4">
-          <Row className="justify-between">
-            <SectionTitle>BATCH ANALYSIS ENGINE</SectionTitle>
-            <Badge
-              label={status?.state === 'patrolling' ? 'COLLECTING' : 'IDLE'}
-              className={status?.state === 'patrolling' ? 'bg-amber-100' : 'bg-brand-50'}
-              textClassName={status?.state === 'patrolling' ? 'text-amber-700' : 'text-brand-700'}
-              dotClassName={status?.state === 'patrolling' ? 'bg-amber-500' : 'bg-brand-500'}
-            />
-          </Row>
+          <SectionTitle>MANUAL CAPTURE</SectionTitle>
           <Text className="text-[10px] text-slate-500 mt-1">
-            The AI model is switched automatically per block plant. Auto-run on patrol completion, or trigger manually.
+            Take a photo right now (outside a patrol). Requires the robot to be online and inside a mapped block.
           </Text>
           <Row className="justify-between mt-3">
-            <Text className="text-xs font-semibold text-slate-500">Active Block / Model</Text>
+            <Text className="text-xs font-semibold text-slate-500">Current block / AI model</Text>
             <Text className="text-xs font-extrabold text-slate-900">
-              {currentBlock ? `${currentBlock.name} → ${currentBlock.aiModel ?? currentBlock.plant}` : 'Awaiting GPS in a mapped block'}
+              {currentBlock ? `${currentBlock.name} → ${currentBlock.aiModel ?? currentBlock.plant}` : 'Not in a mapped block'}
             </Text>
           </Row>
-          <TouchableOpacity
-            onPress={() => analyzeCmd.run(currentBlock?.plant)}
-            disabled={analyzeCmd.pending}
-            activeOpacity={0.85}
-            className={`flex-row items-center justify-center bg-brand-600 rounded-xl py-2.5 mt-3 ${analyzeCmd.pending ? 'opacity-60' : ''}`}
-          >
-            <Feather name="cpu" size={15} color={colors.white} />
-            <Text className="text-xs font-extrabold text-white ml-1.5">
-              {analyzeCmd.pending ? 'Starting Analysis…' : 'Run Batch Analysis Now'}
-            </Text>
-          </TouchableOpacity>
-          <ActionFeedback result={analyzeCmd.result} />
+          <Row className="gap-2 mt-3">
+            <TouchableOpacity
+              onPress={() => photoCmd.run()}
+              disabled={!canCapture || photoCmd.pending}
+              activeOpacity={0.85}
+              className={`flex-1 flex-row items-center justify-center bg-brand-600 rounded-xl py-2.5 ${!canCapture || photoCmd.pending ? 'opacity-50' : ''}`}
+            >
+              <Feather name="camera" size={15} color={colors.white} />
+              <Text className="text-xs font-extrabold text-white ml-1.5">{photoCmd.pending ? 'Capturing…' : 'Capture Photo'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => burstCmd.run()}
+              disabled={!canCapture || burstCmd.pending}
+              activeOpacity={0.85}
+              className={`flex-1 flex-row items-center justify-center bg-slate-100 rounded-xl py-2.5 ${!canCapture || burstCmd.pending ? 'opacity-50' : ''}`}
+            >
+              <MaterialCommunityIcons name="camera-burst" size={16} color={colors.slate700} />
+              <Text className="text-xs font-extrabold text-slate-700 ml-1.5">{burstCmd.pending ? 'Capturing…' : 'Capture Burst (2 photos)'}</Text>
+            </TouchableOpacity>
+          </Row>
+          <ActionFeedback result={photoCmd.result ?? burstCmd.result} />
         </Card>
 
-        {/* Live camera feed */}
-        <Card className="mt-4 p-0 overflow-hidden">
-          <View className="p-4 pb-3">
-            <SectionTitle>FRONT GIMBAL 4K OPTICAL MAST</SectionTitle>
-            <Text className="text-[10px] text-slate-500 mt-1">
-              Rover Alpha-01 • 3840×2160 @ 60 FPS • Sony Starvis II CMOS
-            </Text>
-            <FilterTabs
-              tabs={CHANNELS}
-              active={channel}
-              onSelect={selectChannel}
-              activeClassName="bg-slate-900 border-slate-900"
-            />
-          </View>
-
-          <View>
-            <Image source={require('../../assets/images/scan-feed.jpg')} className="w-full h-[230px] lg:h-[420px] bg-slate-950" resizeMode="cover" />
-            <View className="absolute top-2.5 left-3">
-              <Text className="text-[10px] font-extrabold text-green-400">LIVE CAM-A01 [ZONE 03 - PARCEL B]</Text>
-              <Text className="text-[9px] font-semibold text-brand-100">
-                LAT: 38.4912° N | LON: 122.3129° W | ALT: 48.2m
-              </Text>
-            </View>
-            <View className="absolute top-2.5 right-3 bg-slate-950/70 px-2 py-1 rounded-md">
-              <Text className="text-[10px] font-extrabold text-green-400">NDVI 0.91</Text>
-            </View>
-            <View className="absolute bottom-2.5 left-3 bg-slate-950/70 px-2 py-1 rounded-md">
-              <Text className="text-[9px] font-semibold text-brand-100">
-                LiDAR DIST: 0.42 m • CANOPY TEMP: 23.8°C
-              </Text>
-            </View>
-            <View className="absolute bottom-3.5 right-3.5 w-2.5 h-2.5 rounded-full bg-rose-500" />
-          </View>
-
-          <View className="p-4">
-            <Row className="justify-between">
-              <Text className="text-[10px] font-extrabold text-slate-500">OPTICAL ZOOM:</Text>
-              <Row className="gap-1.5">
-                {ZOOMS.map((z, i) => (
-                  <TouchableOpacity
-                    key={z}
-                    onPress={() => selectZoom(i)}
-                    activeOpacity={0.8}
-                    className={`px-2.5 py-1.5 rounded-md border ${
-                      i === zoom ? 'bg-brand-600 border-brand-600' : 'bg-slate-50 border-slate-200'
-                    }`}
-                  >
-                    <Text className={`text-[10px] font-extrabold ${i === zoom ? 'text-white' : 'text-slate-600'}`}>
-                      {z}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </Row>
-            </Row>
-            <Row className="mt-3 gap-2.5">
-              <TouchableOpacity
-                onPress={toggleRecording}
-                disabled={recordCmd.pending}
-                activeOpacity={0.8}
-                className={`flex-1 flex-row items-center justify-center rounded-lg py-2.5 gap-2 ${
-                  recording ? 'bg-slate-800' : 'bg-rose-600'
-                } ${recordCmd.pending ? 'opacity-60' : ''}`}
-              >
-                <View className={`w-2 h-2 rounded-full ${recording ? 'bg-rose-500' : 'bg-white'}`} />
-                <Text className="text-[11px] font-extrabold text-white">
-                  {recordCmd.pending ? 'Sending…' : recording ? 'Stop Recording' : 'Record Live Stream'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => burstCmd.run(5)}
-                disabled={burstCmd.pending}
-                activeOpacity={0.8}
-                className={`flex-1 flex-row items-center justify-center bg-slate-100 rounded-lg py-2.5 ${
-                  burstCmd.pending ? 'opacity-60' : ''
-                }`}
-              >
-                <Feather name="camera" size={14} color={colors.slate700} />
-                <Text className="text-[11px] font-extrabold text-slate-700 ml-1.5">
-                  {burstCmd.pending ? 'Capturing…' : 'RAW Burst'}
-                </Text>
-              </TouchableOpacity>
-            </Row>
-            <ActionFeedback
-              result={recordCmd.result ?? burstCmd.result ?? channelCmd.result ?? zoomCmd.result}
-            />
-            <Text className="text-[10px] text-slate-400 mt-2.5">
-              Spectral Exposure: Auto-Adjusted 1/240s | Edge GPU @ 48% Core Load
-            </Text>
-          </View>
-        </Card>
-
-        {/* Detections */}
+        {/* The finished batch report — the ONLY place analysis results appear */}
         <Card className="mt-4">
-          <SectionTitle>DETECTION & CLASSIFICATION STREAM</SectionTitle>
-          <View className="mt-2.5 gap-2.5">
-            {DETECTIONS.map((d) => (
-              <View key={d.tag} className={`rounded-xl border-l-4 p-3 ${d.boxClass}`}>
-                <Text className={`text-[11px] font-extrabold ${d.textClass}`}>{d.tag}</Text>
-                <Text className="text-[10px] text-slate-600 mt-1">{d.sub}</Text>
-              </View>
-            ))}
-          </View>
-          <Row className="mt-3.5 justify-between">
-            <Badge label="All (14)" className="bg-brand-600" textClassName="text-white" />
-            <Image source={require('../../assets/images/scan-thumb.jpg')} className="w-[72px] h-11 rounded-lg" />
+          <Row className="justify-between">
+            <SectionTitle>LATEST PATROL REPORT</SectionTitle>
+            {loadingReport && <ActivityIndicator size="small" color={colors.emerald600} />}
           </Row>
+          {!report ? (
+            <Text className="text-xs text-slate-500 mt-2">
+              No completed patrol report yet. Deploy a mission from the Location screen — a report is generated automatically when it finishes.
+            </Text>
+          ) : (
+            <>
+              <Text className="text-[11px] text-slate-500 mt-1">{report.summary}</Text>
+              <Row className="justify-between mt-3">
+                <Text className="text-xs font-semibold text-slate-500">Images analyzed</Text>
+                <Text className="text-xs font-extrabold text-slate-900">{report.report.imageCount}</Text>
+              </Row>
+              <Row className="justify-between mt-2">
+                <Text className="text-xs font-semibold text-slate-500">Blocks covered</Text>
+                <Text className="text-xs font-extrabold text-slate-900">{report.report.blocks.join(', ') || '—'}</Text>
+              </Row>
+              <Row className="justify-between mt-2">
+                <Text className="text-xs font-semibold text-slate-500">Completed</Text>
+                <Text className="text-xs font-extrabold text-slate-900">{timeAgo(report.report.completedAt)}</Text>
+              </Row>
+
+              <Text className="text-[10px] font-extrabold text-slate-400 mt-4 tracking-wide">CLASSIFICATION BREAKDOWN</Text>
+              <View className="mt-2 gap-2">
+                {report.report.averages.length === 0 && (
+                  <Text className="text-xs text-slate-500">No classifications recorded.</Text>
+                )}
+                {report.report.averages.map((a) => {
+                  const healthy = /healthy/i.test(a.className);
+                  return (
+                    <View
+                      key={a.className}
+                      className={`rounded-xl border-l-4 p-3 ${healthy ? 'bg-brand-50 border-brand-600' : 'bg-rose-50 border-rose-600'}`}
+                    >
+                      <Row className="justify-between">
+                        <Text className={`text-[11px] font-extrabold ${healthy ? 'text-brand-700' : 'text-rose-600'}`}>
+                          {a.className.replace(/_+/g, ' ')}
+                        </Text>
+                        <Text className={`text-[11px] font-extrabold ${healthy ? 'text-brand-700' : 'text-rose-600'}`}>
+                          {(a.averageConfidence * 100).toFixed(0)}% avg
+                        </Text>
+                      </Row>
+                      <Text className="text-[10px] text-slate-600 mt-1">{a.samples} sample(s)</Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              {report.report.scans.length > 0 && (
+                <>
+                  <Text className="text-[10px] font-extrabold text-slate-400 mt-4 tracking-wide">CAPTURED PHOTOS</Text>
+                  <Row className="mt-2 gap-2 flex-wrap">
+                    {report.report.scans.slice(0, 12).map((s) => (
+                      <View key={s.id} className="items-center">
+                        {token && (
+                          <Image
+                            source={{ uri: scanImageUrl(s.id, token) }}
+                            className="w-[72px] h-[54px] rounded-lg bg-slate-100"
+                            resizeMode="cover"
+                          />
+                        )}
+                        <Text className="text-[9px] font-bold text-slate-500 mt-1">{s.predictions?.[0]?.className?.replace(/_+/g, ' ') ?? '—'}</Text>
+                      </View>
+                    ))}
+                  </Row>
+                </>
+              )}
+            </>
+          )}
         </Card>
       </Page>
     </View>

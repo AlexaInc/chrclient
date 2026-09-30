@@ -21,9 +21,17 @@ const M_PER_DEG_LAT = 111320;
 const PAD = 14;
 
 /* Projection = { toXY(lat,lng): {x,y}, toLatLng(x,y): [lat,lng] } */
-function useProjection(map: FieldMapMessage, width: number, height: number) {
+function useProjection(map: FieldMapMessage, width: number, height: number, fallbackCenter?: [number, number]) {
   return useMemo(() => {
-    const pts = [...map.boundary, ...map.blocks.flatMap((b) => b.polygon)];
+    let pts = [...map.boundary, ...map.blocks.flatMap((b) => b.polygon)];
+    if (pts.length === 0) {
+      // Brand new, empty map (no blocks drawn yet): show a small empty canvas
+      // centred on the robot's last known GPS fix (or Colombo) so there's
+      // something to tap on instead of a crash / blank screen.
+      const [cLat, cLng] = fallbackCenter ?? [6.9271, 79.8612];
+      const d = 0.0006; // ~65m half-width
+      pts = [[cLat - d, cLng - d], [cLat + d, cLng + d]];
+    }
     const lats = pts.map((p) => p[0]);
     const lngs = pts.map((p) => p[1]);
     const latMin = Math.min(...lats), latMax = Math.max(...lats);
@@ -51,7 +59,7 @@ export default function FieldMap({
   map, location, trail = [], currentBlock, height = 260, width,
   selectedBlockId, onSelectBlock, draftPoints = [], onTapPoint,
 }: Props) {
-  const proj = useProjection(map, width, height);
+  const proj = useProjection(map, width, height, location ? [location.latitude, location.longitude] : undefined);
   const ring = (poly: [number, number][]) =>
     poly.map(([la, ln]) => { const p = proj.toXY(la, ln); return `${p.x},${p.y}`; }).join(' ');
   const centroid = (poly: [number, number][]) => {

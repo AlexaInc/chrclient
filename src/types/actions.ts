@@ -9,41 +9,24 @@ export interface CommandResponse {
 }
 
 /* ------------------------------------------------------------------ */
-/* Domain value types                                                  */
+/* Domain value types — every one of these maps to something the       */
+/* server/robot can actually do. See chrserver's ROVER_ACTIONS /        */
+/* PUMP_ACTIONS / UNSUPPORTED_ACTIONS allow-lists for ground truth.     */
 /* ------------------------------------------------------------------ */
 
-export type RoverMode = 'autonomous' | 'manual' | 'paused' | 'charging';
-
-export type CameraChannel = 'rgb' | 'nir' | 'ndvi' | 'thermal';
-export type CameraZoom = '1x' | '2x' | '4x' | 'macro';
-
-export type ExportKind = 'incident_log' | 'agronomy_report' | 'crops_csv' | 'telemetry';
-export type ExportFormat = 'csv' | 'pdf' | 'json';
-
-export interface ExportRequest {
-  kind: ExportKind;
-  format: ExportFormat;
-  from?: string;
-  to?: string;
-}
-
-export interface ScheduleReportRequest {
-  kind: ExportKind;
-  every: 'daily' | 'weekly' | 'monthly';
-  format: ExportFormat;
-}
+/** The rover only has two real operating modes: fully autonomous patrol,
+ *  or paused-for-manual-drive. There is no "charging" mode (no battery
+ *  gauge) and no separate persisted "paused" mode distinct from manual. */
+export type RoverMode = 'autonomous' | 'manual';
 
 export type DriveDirection = 'forward' | 'backward' | 'left' | 'right' | 'stop';
 
 export interface DriveCommand {
   direction: DriveDirection;
-  speed: number; // 0-100 percent throttle
 }
 
 export interface MissionRequest {
-  name?: string;
   blocks?: string[];
-  waypoints?: [number, number][];
   rowSpacingM?: number;
   scanSpacingM?: number;
   arrivalRadiusM?: number;
@@ -57,47 +40,37 @@ export interface CropBatchRequest {
   notes?: string;
 }
 
+/** Mirrors chrserver's FleetConfig exactly — every field is a real,
+ *  persisted setting the server (and, for irrigation threshold, the pump)
+ *  actually consumes. */
 export interface FleetConfig {
-  maxSpeed: number;
-  obstacleClearanceCm: number;
-  weatherRTB: boolean;
-  microSpray: boolean;
-  confidenceThreshold: number;
-  visionModel?: string;
-  /** capture FPS */
-  captureFps?: number;
+  rowSpacingM: number;
+  scanSpacingM: number;
+  arrivalRadiusM: number;
+  irrigationThresholdPercent: number;
+  diseaseAlertThreshold: number;
 }
-
 
 export type ControlAction =
   /* --- robot motion / mission --- */
-  | { action: 'stop'; data?: { speed?: number } }               // E-Stop
+  | { action: 'stop' }               // E-Stop
   | { action: 'start_patrol' }
   | { action: 'pause_patrol' }
   | { action: 'return_to_base' }
   | { action: 'manual_teleop'; data: { enabled: boolean } }
-  | { action: 'calibrate_gimbal' }
   | { action: 'change_mode'; data: { mode: RoverMode } }
-  | { action: 'set_speed'; data: { speed: number } }
   | { action: 'deploy_mission'; data: MissionRequest }
-  /* --- camera / AI scan --- */
-  | { action: 'camera_set_channel'; data: { channel: CameraChannel } }
-  | { action: 'camera_set_zoom'; data: { zoom: CameraZoom } }
-  | { action: 'camera_record'; data: { recording: boolean } }
-  | { action: 'camera_capture_burst'; data?: { frames?: number } }
+  /* --- camera / AI scan (manual/ad-hoc capture — the real patrol capture
+   *  flow is fully automatic and needs no client action at all) --- */
+  | { action: 'cap_photo' }
+  | { action: 'camera_capture_burst' }
   /* --- alerts --- */
   | { action: 'acknowledge_alerts'; data?: { ids?: number[] } }
-  /* --- reports / analytics / crops --- */
-  | { action: 'export_report'; data: ExportRequest }
-  | { action: 'schedule_report'; data: ScheduleReportRequest }
-  | { action: 'run_predictive_model'; data?: { crop?: string } }
+  /* --- crops --- */
   | { action: 'register_crop_batch'; data: CropBatchRequest }
-  | { action: 'select_crop_source'; data: { crop: string } }
   /* --- settings --- */
   | { action: 'apply_config'; data: FleetConfig }
   /* --- map / location --- */
-  | { action: 'add_field_boundary' }
-  | { action: 'deploy_waypoint_mission'; data?: MissionRequest }
   | { action: 'drive'; data: DriveCommand }
   | { action: 'save_field_map'; data: import('./map').FieldMapMessage }
   | { action: 'get_field_map' }

@@ -8,6 +8,11 @@
  *   `CommandResponse` — callers never need try/catch.
  * - Demo mode (demo/demo login → no socket): commands are answered locally
  *   with a simulated success ack, so every button still "works" offline.
+ *
+ * Every action here is one the physical robot/pump can actually carry out —
+ * see chrserver's ROVER_ACTIONS / PUMP_ACTIONS allow-lists. Report/CSV
+ * export and one-shot state snapshots are plain REST calls (see Api.ts),
+ * not socket commands, since they don't need an ack round-trip.
  */
 
 import { getSocket } from './Websocket';
@@ -16,14 +21,10 @@ import {
   CommandResponse,
   ControlAction,
   ControlMessage,
-  CameraChannel,
-  CameraZoom,
   CropBatchRequest,
-  ExportRequest,
   FleetConfig,
   MissionRequest,
   RoverMode,
-  ScheduleReportRequest,
 } from '../types/actions';
 
 const ACK_TIMEOUT_MS = 5000;
@@ -85,49 +86,33 @@ export function sendCommand(action: ControlAction): Promise<CommandResponse> {
 /* Robot motion / mission                                              */
 /* ------------------------------------------------------------------ */
 
-export const emergencyStop = () => sendCommand({ action: 'stop', data: { speed: 0 } });
+export const emergencyStop = () => sendCommand({ action: 'stop' });
 export const startPatrol = () => sendCommand({ action: 'start_patrol' });
 export const pausePatrol = () => sendCommand({ action: 'pause_patrol' });
 export const returnToBase = () => sendCommand({ action: 'return_to_base' });
 export const setManualTeleop = (enabled: boolean) =>
   sendCommand({ action: 'manual_teleop', data: { enabled } });
-export const calibrateGimbal = () => sendCommand({ action: 'calibrate_gimbal' });
 export const changeRoverMode = (mode: RoverMode) =>
   sendCommand({ action: 'change_mode', data: { mode } });
-export const setRoverSpeed = (speed: number) =>
-  sendCommand({ action: 'set_speed', data: { speed } });
 export const deployMission = (mission: MissionRequest = {}) =>
   sendCommand({ action: 'deploy_mission', data: mission });
 
 /* ------------------------------------------------------------------ */
-/* Camera / AI scan                                                    */
+/* Camera / AI scan — manual/ad-hoc capture only. The real patrol       */
+/* capture+analysis flow is fully automatic and needs no client action. */
 /* ------------------------------------------------------------------ */
 
-export const setCameraChannel = (channel: CameraChannel) =>
-  sendCommand({ action: 'camera_set_channel', data: { channel } });
-export const setCameraZoom = (zoom: CameraZoom) =>
-  sendCommand({ action: 'camera_set_zoom', data: { zoom } });
-export const setRecording = (recording: boolean) =>
-  sendCommand({ action: 'camera_record', data: { recording } });
-export const captureRawBurst = (frames = 5) =>
-  sendCommand({ action: 'camera_capture_burst', data: { frames } });
+export const capturePhoto = () => sendCommand({ action: 'cap_photo' });
+export const captureBurst = () => sendCommand({ action: 'camera_capture_burst' });
 
 /* ------------------------------------------------------------------ */
-/* Alerts / reports / analytics / crops                                */
+/* Alerts / crops                                                       */
 /* ------------------------------------------------------------------ */
 
 export const acknowledgeAlerts = (ids?: number[]) =>
   sendCommand({ action: 'acknowledge_alerts', data: ids ? { ids } : undefined });
-export const exportReport = (req: ExportRequest) =>
-  sendCommand({ action: 'export_report', data: req });
-export const scheduleReport = (req: ScheduleReportRequest) =>
-  sendCommand({ action: 'schedule_report', data: req });
-export const runPredictiveModel = (crop?: string) =>
-  sendCommand({ action: 'run_predictive_model', data: crop ? { crop } : undefined });
 export const registerCropBatch = (batch: CropBatchRequest) =>
   sendCommand({ action: 'register_crop_batch', data: batch });
-export const selectCropSource = (crop: string) =>
-  sendCommand({ action: 'select_crop_source', data: { crop } });
 
 /* ------------------------------------------------------------------ */
 /* Settings / map                                                      */
@@ -135,9 +120,6 @@ export const selectCropSource = (crop: string) =>
 
 export const applyFleetConfig = (config: FleetConfig) =>
   sendCommand({ action: 'apply_config', data: config });
-export const addFieldBoundary = () => sendCommand({ action: 'add_field_boundary' });
-export const deployWaypointMission = (mission?: MissionRequest) =>
-  sendCommand({ action: 'deploy_waypoint_mission', data: mission });
 export const saveFieldMap = (map: import('../types/map').FieldMapMessage) =>
   sendCommand({ action: 'save_field_map', data: map });
 export const requestFieldMap = () => sendCommand({ action: 'get_field_map' });
@@ -161,5 +143,5 @@ export const stopIrrigation = () => sendCommand({ action: 'stop_irrigation' });
 /* Manual drive (Controller screen)                                    */
 /* ------------------------------------------------------------------ */
 
-export const drive = (direction: import('../types/actions').DriveDirection, speed: number) =>
-  sendCommand({ action: 'drive', data: { direction, speed } });
+export const drive = (direction: import('../types/actions').DriveDirection) =>
+  sendCommand({ action: 'drive', data: { direction } });

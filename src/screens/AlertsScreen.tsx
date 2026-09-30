@@ -1,248 +1,148 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
-import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page, CardRail } from '../components/ui';
-import KpiRail from '../components/KpiRail';
-import { BarChart, AutoWidth } from '../components/charts';
+import { Card, SectionTitle, Badge, IconBox, Row, PillButton, Page } from '../components/ui';
 import { colors } from '../theme';
-import { acknowledgeAlerts, exportReport } from '../scripts/Commands';
+import { acknowledgeAlerts } from '../scripts/Commands';
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
-import { useRealtime } from '../realtime/RealtimeContext';
+import { useRealtime, AlertEntry } from '../realtime/RealtimeContext';
 import FilterTabs from '../components/FilterTabs';
 
-const KPIS = [
-  {
-    label: 'ACTIVE HAZARDS',
-    value: '3 Crit / 5 Mod',
-    sub: '2 Rovers Impacted',
-    note: 'Field Live',
-    iconBg: 'bg-rose-100',
-    icon: <Feather name="alert-triangle" size={18} color={colors.rose600} />,
-  },
-  {
-    label: 'MEAN TIME TO RESOLVE',
-    value: '14.2 min',
-    sub: '-18% vs avg',
-    note: 'Auto-triage Active',
-    iconBg: 'bg-brand-100',
-    icon: <Feather name="clock" size={18} color={colors.emerald600} />,
-  },
-  {
-    label: 'SENSOR INTEGRITY',
-    value: '99.4% Online',
-    sub: '1 LiDAR calibration needed',
-    note: 'Fleet-wide diagnostics',
-    iconBg: 'bg-blue-100',
-    icon: <MaterialCommunityIcons name="radar" size={20} color={colors.blue600} />,
-  },
-  {
-    label: 'PEST & PATHOGEN FLAGS',
-    value: '2 Detected',
-    sub: 'Early Blight + Spider Mite',
-    note: 'Micro-spray staged',
-    iconBg: 'bg-purple-100',
-    icon: <MaterialCommunityIcons name="bug-outline" size={20} color={colors.purple600} />,
-  },
-  {
-    label: 'PERIMETER & GEOFENCE',
-    value: '100% Safe',
-    sub: '0 Breaches recorded',
-    note: 'Virtual fence armed',
-    iconBg: 'bg-brand-100',
-    icon: <Feather name="shield" size={18} color={colors.emerald600} />,
-  },
-];
+const FILTERS = ['All', 'Unacknowledged', 'Critical', 'Warning', 'Info'];
 
-const FILTERS = ['All Hazards (8)', 'Critical Pathogen (2)', 'Hardware & LiDAR (3)', 'Irrigation Faults (3)'];
+function timeAgo(ts: number | string | undefined): string {
+  const t = typeof ts === 'number' ? ts : ts ? new Date(ts).getTime() : null;
+  if (!t) return '—';
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 5) return 'Just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
 
-const ALERTS = [
-  {
-    title: 'Early Blight Spore Concentration',
-    zone: 'SECTOR 04 - BLOCK 2',
-    severity: 'Stage 1 (Elevated)',
-    status: 'Rover On Scene',
-    time: '6 mins ago',
-    sevClass: 'bg-rose-100',
-    sevText: 'text-rose-600',
-    iconBg: 'bg-rose-100',
-    icon: <MaterialCommunityIcons name="mushroom-outline" size={20} color={colors.rose600} />,
-  },
-  {
-    title: 'Spider Mite Cluster Detected',
-    zone: 'GREENHOUSE ALPHA - POD 2',
-    severity: 'Moderate',
-    status: 'Scheduled Biocontrol',
-    time: '24 mins ago',
-    sevClass: 'bg-amber-100',
-    sevText: 'text-amber-600',
-    iconBg: 'bg-amber-100',
-    icon: <MaterialCommunityIcons name="spider" size={20} color={colors.amber600} />,
-  },
-  {
-    title: 'LiDAR Calibration Drift',
-    zone: 'SCOUT D-1 UNIT',
-    severity: 'Low',
-    status: 'Auto-calibration queued',
-    time: '1 hr ago',
-    sevClass: 'bg-blue-100',
-    sevText: 'text-blue-600',
-    iconBg: 'bg-blue-100',
-    icon: <MaterialCommunityIcons name="tune-vertical" size={20} color={colors.blue600} />,
-  },
-  {
-    title: 'Drip Line Pressure Drop',
-    zone: 'FIELD B - ROW 8',
-    severity: 'Moderate',
-    status: 'Valve inspection pending',
-    time: '2 hrs ago',
-    sevClass: 'bg-sky-100',
-    sevText: 'text-sky-600',
-    iconBg: 'bg-sky-100',
-    icon: <MaterialCommunityIcons name="pipe-leak" size={20} color={colors.sky600} />,
-  },
-];
+const SEVERITY_STYLE: Record<AlertEntry['severity'], { badge: string; text: string; iconBg: string; icon: keyof typeof Feather.glyphMap; color: string }> = {
+  critical: { badge: 'bg-rose-100', text: 'text-rose-600', iconBg: 'bg-rose-100', icon: 'alert-octagon', color: colors.rose600 },
+  warning: { badge: 'bg-amber-100', text: 'text-amber-700', iconBg: 'bg-amber-100', icon: 'alert-triangle', color: colors.amber600 },
+  info: { badge: 'bg-blue-100', text: 'text-blue-700', iconBg: 'bg-blue-100', icon: 'info', color: colors.blue600 },
+};
 
 export default function AlertsScreen() {
   const [filter, setFilter] = useState(0);
-  const { alerts } = useRealtime();
+  const { alerts, acknowledgeLocally, isDemo } = useRealtime();
 
-  const exportLog = useCommand(exportReport);
   const ackAll = useCommand(acknowledgeAlerts);
+  const ackOne = useCommand(acknowledgeAlerts);
+
+  const filtered = alerts.filter((a) => {
+    switch (FILTERS[filter]) {
+      case 'Unacknowledged': return !a.acknowledgedAt;
+      case 'Critical': return a.severity === 'critical';
+      case 'Warning': return a.severity === 'warning';
+      case 'Info': return a.severity === 'info';
+      default: return true;
+    }
+  });
+
+  const unacknowledgedIds = alerts.filter((a) => !a.acknowledgedAt).map((a) => a.id);
+  const critCount = alerts.filter((a) => !a.acknowledgedAt && a.severity === 'critical').length;
+  const warnCount = alerts.filter((a) => !a.acknowledgedAt && a.severity === 'warning').length;
+  const infoCount = alerts.filter((a) => !a.acknowledgedAt && a.severity === 'info').length;
+
+  const handleAckAll = async () => {
+    const res = await ackAll.run(unacknowledgedIds.length ? unacknowledgedIds : undefined);
+    if (res.success) acknowledgeLocally(unacknowledgedIds.length ? unacknowledgedIds : undefined);
+  };
+  const handleAckOne = async (id: number) => {
+    const res = await ackOne.run([id]);
+    if (res.success) acknowledgeLocally([id]);
+  };
 
   return (
     <View className="flex-1 bg-surface">
       <Header title="Alerts" />
       <Page>
         <Row className="gap-2 flex-wrap">
-          <Badge label="FIELD SAFETY & DIAGNOSTICS" className="bg-rose-100" textClassName="text-rose-600" />
-          <Badge
-            label="REAL-TIME HAZARD STREAM"
-            className="bg-amber-100"
-            textClassName="text-amber-600"
-            dotClassName="bg-amber-600"
-          />
+          <Badge label="LIVE ALERT STREAM" className="bg-rose-100" textClassName="text-rose-600" />
+          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
         </Row>
-        <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Alerts & Hazard Intelligence</Text>
+        <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Alerts</Text>
         <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
-          Real-time autonomous rover anomaly detection, crop disease alerts, geofence breaches, and sensor
-          diagnostic streams.
+          Device offline/online transitions, rain detection, mission faults, low soil moisture, disease detections, and completed patrol reports.
         </Text>
 
-        <Row className="mt-3.5 gap-2.5 lg:max-w-[560px]">
+        <Row className="mt-3.5 gap-3 flex-wrap">
+          <View className="flex-row items-center gap-1.5">
+            <View className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+            <Text className="text-[11px] font-bold text-slate-600">{critCount} Critical</Text>
+          </View>
+          <View className="flex-row items-center gap-1.5">
+            <View className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+            <Text className="text-[11px] font-bold text-slate-600">{warnCount} Warning</Text>
+          </View>
+          <View className="flex-row items-center gap-1.5">
+            <View className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+            <Text className="text-[11px] font-bold text-slate-600">{infoCount} Info</Text>
+          </View>
+        </Row>
+
+        <Row className="mt-3.5 gap-2.5 lg:max-w-[400px]">
           <PillButton
-            label={exportLog.pending ? 'Exporting…' : 'Export Incident Log'}
-            className={`flex-1 border-[1.5px] border-slate-700 ${exportLog.pending ? 'opacity-60' : ''}`}
-            textClassName="text-slate-700"
-            onPress={() => exportLog.run({ kind: 'incident_log', format: 'csv' })}
-          />
-          <PillButton
-            label={ackAll.pending ? 'Acknowledging…' : 'Acknowledge All'}
-            className={`flex-1 bg-brand-600 ${ackAll.pending ? 'opacity-60' : ''}`}
+            label={ackAll.pending ? 'Acknowledging…' : `Acknowledge All (${unacknowledgedIds.length})`}
+            className={`flex-1 bg-brand-600 ${ackAll.pending || unacknowledgedIds.length === 0 ? 'opacity-60' : ''}`}
             textClassName="text-white"
-            onPress={() => ackAll.run(alerts.map((a) => a.id))}
+            onPress={handleAckAll}
           />
         </Row>
-        <ActionFeedback result={exportLog.result ?? ackAll.result} />
+        <ActionFeedback result={ackAll.result} />
 
-        {/* KPIs */}
-        <KpiRail items={KPIS} />
-
-        {/* Featured incident */}
-        <Card className="mt-4">
-          <SectionTitle>LIVE ANOMALY INSPECTION & INCIDENT DIGITAL TWIN</SectionTitle>
-          <Text className="text-[10px] text-slate-500 mt-1">
-            Photonic diagnostics, real-time pathogen triangulation, and robotic rover telemetry
-          </Text>
+        <View className="mt-3">
           <FilterTabs
-            tabs={FILTERS}
+            tabs={FILTERS.map((f, i) => (i === 0 ? `${f} (${alerts.length})` : f))}
             active={filter}
             onSelect={setFilter}
             activeClassName="bg-rose-600 border-rose-600"
           />
+        </View>
 
-          <View className="mt-3">
-            <Image
-              source={require('../../assets/images/alerts-3d.jpg')}
-              className="w-full h-[200px] lg:h-[340px] rounded-xl"
-              resizeMode="cover"
-            />
-            <View className="absolute top-2.5 left-2.5 bg-rose-600/90 rounded-md px-2 py-1">
-              <Text className="text-[9px] font-extrabold text-white">ACTIVE ALERT: SECTOR 04 - BLOCK 2</Text>
-            </View>
-          </View>
-          <Text className="text-[15px] font-extrabold text-slate-900 mt-2.5">
-            Early Blight Spore Concentration
-          </Text>
-          <Row className="justify-between mt-2.5">
-            <View>
-              <Text className="text-[10px] font-bold text-slate-400">Severity Level</Text>
-              <Text className="text-[13px] font-extrabold text-rose-600 mt-0.5">Stage 1 (Elevated)</Text>
-            </View>
-            <View>
-              <Text className="text-[10px] font-bold text-slate-400">Autonomous Status</Text>
-              <Text className="text-[13px] font-extrabold text-brand-700 mt-0.5">Rover On Scene</Text>
-            </View>
-          </Row>
-          <Text className="text-[10px] text-slate-400 mt-2.5">
-            Rover Alpha-01 Diagnostic: Triggered 6 mins ago
-          </Text>
-        </Card>
-
-        {/* Alert list */}
         <Card className="mt-4">
-          <SectionTitle>INCIDENT QUEUE</SectionTitle>
+          <SectionTitle>ALERT QUEUE</SectionTitle>
           <View className="mt-2">
-            {ALERTS.map((a, i) => (
-              <View
-                key={a.title}
-                className={`flex-row items-start py-3 ${i > 0 ? 'border-t border-slate-100' : ''}`}
-              >
-                <IconBox className={a.iconBg} size={38}>{a.icon}</IconBox>
-                <View className="flex-1 ml-3">
-                  <Text className="text-xs font-extrabold text-slate-800">{a.title}</Text>
-                  <Text className="text-[10px] font-bold text-slate-400 mt-0.5">{a.zone}</Text>
-                  <Row className="mt-1.5 gap-2 flex-wrap">
-                    <Badge label={a.severity} className={a.sevClass} textClassName={a.sevText} />
-                    <Badge label={a.status} className="bg-brand-50" textClassName="text-brand-700" />
-                  </Row>
-                </View>
-                <Text className="text-[10px] font-bold text-slate-400">{a.time}</Text>
-              </View>
-            ))}
-          </View>
-        </Card>
-
-        {/* Hazard frequency chart */}
-        <Card className="mt-4">
-          <SectionTitle>HAZARD FREQUENCY VS AUTO-RESOLUTION (LAST 24 HOURS)</SectionTitle>
-          <Row className="mt-3 gap-4 flex-wrap">
-            <Row>
-              <View className="w-2.5 h-2.5 rounded-full bg-brand-500 mr-1.5" />
-              <Text className="text-[11px] font-bold text-slate-600">Auto-Resolved</Text>
-            </Row>
-            <Row>
-              <View className="w-2.5 h-2.5 rounded-full bg-amber-600 mr-1.5" />
-              <Text className="text-[11px] font-bold text-slate-600">Pending / Triage</Text>
-            </Row>
-            <Row>
-              <View className="w-2.5 h-2.5 rounded-full bg-rose-500 mr-1.5" />
-              <Text className="text-[11px] font-bold text-slate-600">Critical</Text>
-            </Row>
-          </Row>
-          <View className="mt-3">
-            <AutoWidth minHeight={190}>
-              {(w) => (
-                <BarChart
-                  width={w}
-                  height={190}
-                  bars={[6, 9, 4, 11, 7, 13, 8, 5]}
-                  labels={['00', '03', '06', '09', '12', '15', '18', '21']}
-                  color={colors.emerald500}
-                />
-              )}
-            </AutoWidth>
+            {filtered.length === 0 ? (
+              <Text className="text-xs text-slate-400 py-8 text-center">No alerts in this filter.</Text>
+            ) : (
+              filtered.map((a, i) => {
+                const s = SEVERITY_STYLE[a.severity];
+                return (
+                  <View
+                    key={a.id}
+                    className={`flex-row items-start py-3 ${i > 0 ? 'border-t border-slate-100' : ''}`}
+                  >
+                    <IconBox className={s.iconBg} size={38}>
+                      <Feather name={s.icon} size={18} color={s.color} />
+                    </IconBox>
+                    <View className="flex-1 ml-3">
+                      <Text className="text-xs font-extrabold text-slate-800">{a.title}</Text>
+                      {!!a.description && <Text className="text-[10px] text-slate-500 mt-0.5">{a.description}</Text>}
+                      <Row className="mt-1.5 gap-2 flex-wrap">
+                        <Badge label={a.severity.toUpperCase()} className={s.badge} textClassName={s.text} />
+                        {a.acknowledgedAt && <Badge label="ACKNOWLEDGED" className="bg-slate-100" textClassName="text-slate-500" />}
+                      </Row>
+                    </View>
+                    <View className="items-end">
+                      <Text className="text-[10px] font-bold text-slate-400">{timeAgo(a.timestamp ?? a.receivedAt)}</Text>
+                      {!a.acknowledgedAt && (
+                        <TouchableOpacity onPress={() => handleAckOne(a.id)} activeOpacity={0.7} className="mt-1.5">
+                          <Text className="text-[10px] font-extrabold text-brand-700">Acknowledge</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })
+            )}
           </View>
         </Card>
       </Page>

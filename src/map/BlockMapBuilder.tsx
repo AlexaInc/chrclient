@@ -39,10 +39,18 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
   const [selected, setSelected] = useState<FieldBlock | null>(null);
   const [queuedIds, setQueuedIds] = useState<string[]>([]);
   const [localMap, setLocalMap] = useState<FieldMapMessage | null>(null);
+  const [newMapName, setNewMapName] = useState('');
   const save = useCommand(saveFieldMap);
   const mission = useCommand(deployMission);
 
   const map = localMap ?? fieldMap;
+
+  const createMap = async () => {
+    const name = newMapName.trim() || 'Field A';
+    const empty: FieldMapMessage = { name, boundary: [], blocks: [] };
+    setLocalMap(empty);
+    await save.run(empty);
+  };
 
   const finishBlock = async () => {
     if (!map || draft.length < 3 || !blockName.trim()) return;
@@ -88,10 +96,32 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
   const onLayout = (e: LayoutChangeEvent) => setWidth(Math.round(e.nativeEvent.layout.width));
 
   if (!map) {
+    // No map saved on the server yet — this is the very first setup, not a
+    // dead end: let the operator create one right here so the robot has
+    // something real to test against.
     return (
       <Card className="mt-4">
         <SectionTitle>FIELD BLOCK MAP</SectionTitle>
-        <Text className="text-xs text-slate-500 mt-2">Waiting for field map from server…</Text>
+        <Text className="text-xs text-slate-500 mt-2">
+          No field map has been saved yet. Create one to start marking crop blocks for the robot to patrol.
+        </Text>
+        <TextInput
+          value={newMapName}
+          onChangeText={setNewMapName}
+          placeholder="Field name (e.g. Field A)"
+          placeholderTextColor={colors.slate400}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-900 mt-3 bg-white"
+        />
+        <TouchableOpacity
+          onPress={createMap}
+          disabled={save.pending}
+          activeOpacity={0.85}
+          className={`flex-row items-center justify-center bg-brand-600 rounded-xl py-2.5 mt-3 ${save.pending ? 'opacity-50' : ''}`}
+        >
+          <Feather name="plus" size={15} color={colors.white} />
+          <Text className="text-xs font-extrabold text-white ml-1.5">{save.pending ? 'Creating…' : 'Create Field Map'}</Text>
+        </TouchableOpacity>
+        <ActionFeedback result={save.result} />
       </Card>
     );
   }
