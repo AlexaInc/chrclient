@@ -28,7 +28,10 @@ export default function ControllerScreen() {
   const isDesktop = useIsDesktop();
   const { status, ultrasonic, currentBlock, isDemo, robotOnline } = useRealtime();
   const [active, setActive] = useState<DriveDirection | null>(null);
-  const [teleop, setTeleop] = useState(false);
+  // Single source of truth: the server-broadcast status.mode (itself derived
+  // from what the rover is really doing). A local useState here previously
+  // disagreed with the Dashboard/Robot screens and reset on re-login.
+  const teleop = status?.mode === 'manual';
   const repeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const mode = useCommand(changeRoverMode);
@@ -48,14 +51,14 @@ export default function ControllerScreen() {
     repeatRef.current = setInterval(() => drive(dir), REPEAT_MS);
   }, []);
 
+  // The server ack triggers a status broadcast, which flips `teleop` above —
+  // every screen updates together from the same truth.
   const enableTeleop = async () => {
-    const res = await mode.run('manual');
-    if (res.success) setTeleop(true);
+    await mode.run('manual');
   };
   const disableTeleop = async () => {
     stopDrive();
-    const res = await mode.run('autonomous');
-    if (res.success) setTeleop(false);
+    await mode.run('autonomous');
   };
 
   // PC: WASD / arrow keys via web keydown/keyup

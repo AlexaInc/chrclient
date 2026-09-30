@@ -224,6 +224,55 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
         </TouchableOpacity>
       )}
 
+      {/* Always-visible patrol deployment — previously this only appeared after
+          tapping a block polygon on the map, so operators couldn't find it. */}
+      {!drawing && map.blocks.length > 0 && (
+        <View className="bg-brand-50 border border-brand-200 rounded-xl p-3 mt-3">
+          <SectionTitle>DEPLOY AUTONOMOUS PATROL</SectionTitle>
+          <Text className="text-[10px] text-slate-500 mt-1">
+            Pick the blocks to patrol (tap to queue) — or deploy all blocks. Tap a block
+            polygon on the map above to edit its spacing or remove it.
+          </Text>
+          <Row className="gap-1.5 mt-2 flex-wrap">
+            {map.blocks.map((b) => (
+              <TouchableOpacity
+                key={b.id}
+                onPress={() => toggleQueued(b.id)}
+                activeOpacity={0.8}
+                className={`px-3 py-1.5 rounded-full border ${
+                  queuedIds.includes(b.id) ? 'bg-brand-600 border-brand-600' : 'bg-white border-slate-300'
+                }`}
+              >
+                <Text className={`text-[11px] font-extrabold ${queuedIds.includes(b.id) ? 'text-white' : 'text-slate-600'}`}>
+                  {b.name} ({b.plant})
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </Row>
+          {queuedIds.length > 0 && (
+            <Text className="text-[10px] font-bold text-slate-600 mt-2">
+              Route: {queuedIds.map((id) => map.blocks.find((b) => b.id === id)?.name ?? id).join(' → ')}
+            </Text>
+          )}
+          <TouchableOpacity
+            onPress={() => mission.run({ blocks: queuedIds, rowSpacingM: Number(rowSpacing) || 1,
+              scanSpacingM: Number(scanSpacing) || 1, arrivalRadiusM: Number(arrivalRadius) || 2 })}
+            disabled={mission.pending}
+            activeOpacity={0.85}
+            className={`bg-brand-600 rounded-xl py-2.5 mt-2.5 ${mission.pending ? 'opacity-60' : ''}`}
+          >
+            <Text className="text-white text-center text-xs font-extrabold">
+              {mission.pending
+                ? 'DEPLOYING…'
+                : queuedIds.length > 0
+                  ? `DEPLOY PATROL — ${queuedIds.length} BLOCK${queuedIds.length > 1 ? 'S' : ''}`
+                  : `DEPLOY PATROL — ALL ${map.blocks.length} BLOCK${map.blocks.length > 1 ? 'S' : ''}`}
+            </Text>
+          </TouchableOpacity>
+          <ActionFeedback result={mission.result} />
+        </View>
+      )}
+
       {selected && !drawing && (
         <View className="bg-slate-50 border border-slate-200 rounded-xl p-3 mt-3">
           <Row className="justify-between">
@@ -264,7 +313,7 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
           </TouchableOpacity>
         </View>
       )}
-      <ActionFeedback result={save.result ?? mission.result} />
+      <ActionFeedback result={save.result} />
     </Card>
   );
 }
