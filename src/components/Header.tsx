@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,7 +36,15 @@ export default function Header({ title }: { title?: string }) {
           {title}
         </Text>
       ) : (
-        <Text className="text-lg font-extrabold text-slate-900 ml-1">{title ?? 'Dashboard'}</Text>
+        <View className="flex-row items-center ml-1">
+          <Image
+            source={require('../../assets/images/chr-logo.png')}
+            style={{ width: 26, height: 26, marginRight: 8 }}
+            resizeMode="contain"
+            accessibilityLabel="CropHealth Robot logo"
+          />
+          <Text className="text-lg font-extrabold text-slate-900">{title ?? 'Dashboard'}</Text>
+        </View>
       )}
 
       {isDesktop && <View className="flex-1" />}

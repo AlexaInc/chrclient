@@ -8,8 +8,9 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from './AuthContext';
 import { colors } from '../theme';
 
@@ -37,8 +38,13 @@ export default function LoginModal() {
           <View className="w-full max-w-[400px] bg-white rounded-2xl p-6">
             {/* Brand */}
             <View className="items-center mb-5">
-              <View className="w-14 h-14 rounded-2xl bg-sidebar items-center justify-center">
-                <MaterialCommunityIcons name="robot-outline" size={30} color={colors.emerald400} />
+              <View className="w-16 h-16 rounded-2xl bg-white border border-slate-200 items-center justify-center overflow-hidden">
+                <Image
+                  source={require('../../assets/images/chr-logo.png')}
+                  style={{ width: 56, height: 56 }}
+                  resizeMode="contain"
+                  accessibilityLabel="CropHealth Robot logo"
+                />
               </View>
               <Text className="text-lg font-extrabold text-slate-900 mt-3">AI CROP ROBOT</Text>
               <Text className="text-[11px] font-semibold text-slate-400 mt-0.5">
