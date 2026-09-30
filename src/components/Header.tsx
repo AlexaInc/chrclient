@@ -14,7 +14,7 @@ export default function Header({ title }: { title?: string }) {
   const isDesktop = useIsDesktop();
   const { user, logout } = useAuth();
   const { alerts } = useRealtime();
-  const alertCount = alerts.length;
+  const alertCount = alerts.filter((a) => !a.acknowledgedAt).length;
 
   return (
     <View
@@ -36,14 +36,7 @@ export default function Header({ title }: { title?: string }) {
           {title}
         </Text>
       ) : (
-        <View
-          className={`flex-row items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 mx-2 ${
-            isDesktop ? 'w-80' : 'flex-1'
-          }`}
-        >
-          <Text className="text-xs font-semibold text-slate-400">Search anything...</Text>
-          <Feather name="search" size={15} color={colors.slate400} />
-        </View>
+        <Text className="text-lg font-extrabold text-slate-900 ml-1">{title ?? 'Dashboard'}</Text>
       )}
 
       {isDesktop && <View className="flex-1" />}

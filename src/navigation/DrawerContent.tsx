@@ -5,8 +5,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
+import { useRealtime } from '../realtime/RealtimeContext';
 
-const NAV_ITEMS: { key: string; label: string; icon: keyof typeof Feather.glyphMap; badge?: string }[] = [
+const NAV_ITEMS: { key: string; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { key: 'Dashboard', label: 'Dashboard', icon: 'home' },
   { key: 'Robot', label: 'Robot', icon: 'cpu' },
   { key: 'Controller', label: 'Controller', icon: 'navigation' },
@@ -15,7 +16,7 @@ const NAV_ITEMS: { key: string; label: string; icon: keyof typeof Feather.glyphM
   { key: 'AIScan', label: 'AI Scan', icon: 'camera' },
   { key: 'Location', label: 'Location', icon: 'map-pin' },
   { key: 'Analytics', label: 'Analytics', icon: 'bar-chart-2' },
-  { key: 'Alerts', label: 'Alerts', icon: 'bell', badge: '2' },
+  { key: 'Alerts', label: 'Alerts', icon: 'bell' },
   { key: 'Reports', label: 'Reports', icon: 'file-text' },
   { key: 'Settings', label: 'Settings', icon: 'settings' },
 ];
@@ -24,6 +25,8 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
   const { state, navigation } = props;
   const activeRoute = state.routes[state.index]?.name;
   const insets = useSafeAreaInsets();
+  const { alerts } = useRealtime();
+  const unacknowledgedCount = alerts.filter((a) => !a.acknowledgedAt).length;
 
   return (
     <View className="flex-1 bg-sidebar" style={{ paddingTop: insets.top + 8 }}>
@@ -43,6 +46,9 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
       <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 8 }}>
         {NAV_ITEMS.map((item) => {
           const active = activeRoute === item.key;
+          const badge = item.key === 'Alerts' && unacknowledgedCount > 0
+            ? (unacknowledgedCount > 99 ? '99+' : String(unacknowledgedCount))
+            : undefined;
           const inner = (
             <View className="flex-row items-center">
               <Feather name={item.icon} size={19} color={active ? colors.white : colors.emerald100} />
@@ -53,14 +59,15 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
               >
                 {item.label}
               </Text>
-              {item.badge ? (
+              {badge ? (
                 <View className="min-w-[20px] h-5 rounded-full bg-rose-500 items-center justify-center px-1.5 mr-1.5">
-                  <Text className="text-white text-[11px] font-extrabold">{item.badge}</Text>
+                  <Text className="text-white text-[11px] font-extrabold">{badge}</Text>
                 </View>
               ) : null}
               {active ? <Feather name="chevron-right" size={15} color={colors.white} /> : null}
             </View>
           );
+
           return (
             <TouchableOpacity
               key={item.key}
