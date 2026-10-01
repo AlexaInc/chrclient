@@ -15,6 +15,7 @@ const NAV_ITEMS: { key: string; label: string; icon: keyof typeof Feather.glyphM
   { key: 'Crops', label: 'Crops', icon: 'feather' },
   { key: 'AIScan', label: 'AI Scan', icon: 'camera' },
   { key: 'Location', label: 'Location', icon: 'map-pin' },
+  { key: 'Mapping', label: 'GPS Mapping', icon: 'crosshair' },
   { key: 'Analytics', label: 'Analytics', icon: 'bar-chart-2' },
   { key: 'Alerts', label: 'Alerts', icon: 'bell' },
   { key: 'Reports', label: 'Reports', icon: 'file-text' },

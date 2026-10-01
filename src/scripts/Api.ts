@@ -193,3 +193,37 @@ export const fetchConfig = (token: string) => authedGet<{ ok: boolean; config: F
 /* Mission progress row type re-exported for screens that only need it */
 /* ------------------------------------------------------------------ */
 export type { MissionProgressMessage };
+
+/* ------------------------------------------------------------------ */
+/* Photo collections / manual patrols                                  */
+/* ------------------------------------------------------------------ */
+
+export interface PhotoScanDto {
+  id: number; patrol_id: number; mission_id: string; block_id: string; plant: string;
+  scan_point: number; side: string; predictions: ScanPrediction[]; created_at: number;
+}
+export interface PhotoCollectionDto {
+  id: number; started_at: number; ended_at: number | null;
+  status: 'running' | 'completed' | 'analyzed' | 'aborted';
+  notes: string | null; mode: 'auto' | 'manual' | 'mapping'; block_ids: string[];
+  photo_count: number; scans: PhotoScanDto[]; report: ReportDto | null;
+}
+
+export const fetchPhotoCollections = (token: string) =>
+  authedGet<{ ok: boolean; collections: PhotoCollectionDto[] }>('/api/photo-collections', token);
+export const analyzePhotoCollection = (token: string, patrolId: number) =>
+  authedPost<{ ok: boolean; reportId: number; report: ReportDto['report'] }>(`/api/photo-collections/${patrolId}/analyze`, token);
+export const startManualPatrol = (token: string, blockId: string) =>
+  authedPost<{ ok: boolean; patrol: { patrolId: number; missionId: string; blockId: string; blockName: string; plant: string } }>('/api/manual-patrol/start', token, { blockId });
+export const endManualPatrol = (token: string) =>
+  authedPost<{ ok: boolean; reportId: number; report: ReportDto['report'] }>('/api/manual-patrol/end', token);
+
+async function authedDelete<T>(path: string, token: string): Promise<T> {
+  const res = await fetch(`${SERVER_URL}${path}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`DELETE ${path} failed (${res.status})`);
+  return res.json();
+}
+export const deletePhotoCollection = (token: string, patrolId: number) =>
+  authedDelete<{ ok: boolean; deletedPhotos: number }>(`/api/photo-collections/${patrolId}`, token);
+export const deletePhoto = (token: string, scanId: number) =>
+  authedDelete<{ ok: boolean }>(`/api/scans/${scanId}`, token);

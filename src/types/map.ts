@@ -16,6 +16,7 @@ export interface FieldMapMessage {
   name: string;
   boundary: [number, number][];
   blocks: FieldBlock[];
+  base?: { latitude: number; longitude: number; name?: string };
 }
 
 export interface UltrasonicMessage {

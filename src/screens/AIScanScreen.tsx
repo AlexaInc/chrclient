@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, Row, Page } from '../components/ui';
 import { colors } from '../theme';
@@ -9,220 +9,127 @@ import { useRealtime } from '../realtime/RealtimeContext';
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 import { useAuth } from '../auth/AuthContext';
-import { fetchReports, ReportDto, scanImageUrl } from '../scripts/Api';
+import {
+  analyzePhotoCollection, deletePhoto, deletePhotoCollection, endManualPatrol,
+  fetchPhotoCollections, PhotoCollectionDto, scanImageUrl, startManualPatrol,
+} from '../scripts/Api';
 
-function timeAgo(ts: number | null | undefined): string {
-  if (!ts) return '—';
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (s < 5) return 'Just now';
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  return `${Math.round(s / 3600)}h ago`;
-}
+const when = (ts?: number | null) => ts ? new Date(ts).toLocaleString() : '—';
 
 export default function AIScanScreen() {
-  const { currentBlock, status, latestScan, latestReport, mission, isDemo, robotOnline } = useRealtime();
   const { token } = useAuth();
-  const burstCmd = useCommand(captureBurst);
-  const photoCmd = useCommand(capturePhoto);
+  const { fieldMap, robotOnline, status, latestScan, latestReport } = useRealtime();
+  const photo = useCommand(capturePhoto);
+  const burst = useCommand(captureBurst);
+  const [collections, setCollections] = useState<PhotoCollectionDto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [working, setWorking] = useState<number | 'manual' | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [selectedBlock, setSelectedBlock] = useState<string>('');
+  const [manualPatrol, setManualPatrol] = useState<{ patrolId: number; blockName: string } | null>(null);
 
-  const [fallbackReport, setFallbackReport] = useState<ReportDto | null>(null);
-  const [loadingReport, setLoadingReport] = useState(false);
+  const refresh = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try { setCollections((await fetchPhotoCollections(token)).collections); }
+    catch (e: any) { console.warn('[AI Scan] collections:', e?.message ?? e); }
+    finally { setLoading(false); }
+  }, [token]);
 
-  // On first load, pull the most recent finished report from the server so
-  // there's something to show even if no mission has completed yet in this
-  // session. Live `latestReport` (pushed the instant a patrol finishes)
-  // always takes priority once it arrives.
+  useEffect(() => { void refresh(); }, [refresh, latestScan, latestReport]);
   useEffect(() => {
-    if (isDemo || !token) return;
-    setLoadingReport(true);
-    fetchReports(token)
-      .then((res) => setFallbackReport(res.reports[0] ?? null))
-      .catch((e) => console.warn('[AIScanScreen] failed to load reports:', e?.message ?? e))
-      .finally(() => setLoadingReport(false));
-  }, [isDemo, token]);
+    if (!selectedBlock && fieldMap?.blocks[0]) setSelectedBlock(fieldMap.blocks[0].id);
+  }, [fieldMap, selectedBlock]);
 
-  const report = latestReport
-    ? { id: latestReport.id, patrol_id: latestReport.report.patrolId, trigger_type: 'auto' as const, summary: `Mission ${latestReport.missionId} completed with ${latestReport.report.imageCount} analyzed images`, created_at: latestReport.report.completedAt, report: latestReport.report }
-    : fallbackReport;
+  const startManual = async () => {
+    if (!token || !selectedBlock) return;
+    setWorking('manual');
+    try {
+      const r = await startManualPatrol(token, selectedBlock);
+      setManualPatrol({ patrolId: r.patrol.patrolId, blockName: r.patrol.blockName });
+      await refresh();
+    } catch (e: any) { Alert.alert('Could not start patrol', e?.message ?? String(e)); }
+    finally { setWorking(null); }
+  };
+  const finishManual = async () => {
+    if (!token) return;
+    setWorking('manual');
+    try { await endManualPatrol(token); setManualPatrol(null); await refresh(); }
+    catch (e: any) { Alert.alert('Could not end patrol', e?.message ?? String(e)); }
+    finally { setWorking(null); }
+  };
+  const analyze = async (id: number) => {
+    if (!token) return; setWorking(id);
+    try { await analyzePhotoCollection(token, id); await refresh(); }
+    catch (e: any) { Alert.alert('Analysis failed', e?.message ?? String(e)); }
+    finally { setWorking(null); }
+  };
+  const removeCollection = (id: number) => Alert.alert('Delete collection?', 'All photo files and analysis results will be permanently deleted.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Delete', style: 'destructive', onPress: async () => { if (!token) return; setWorking(id); try { await deletePhotoCollection(token, id); await refresh(); } finally { setWorking(null); } } },
+  ]);
+  const removePhoto = (id: number) => Alert.alert('Delete photo?', 'The image file and its predictions will be permanently deleted.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Delete', style: 'destructive', onPress: async () => { if (!token) return; await deletePhoto(token, id); await refresh(); } },
+  ]);
 
-  // Live capture progress during an active patrol — deliberately shows ONLY
-  // a running count of photos captured, never per-image predictions. The
-  // only place classification results are shown is the finished batch
-  // report below, exactly as the AI-scan feature is designed to work.
-  const patrolling = status?.state === 'patrolling';
-  const [capturedCount, setCapturedCount] = useState(0);
-  useEffect(() => {
-    if (!mission) return;
-    setCapturedCount(0);
-  }, [mission?.missionId]);
-  useEffect(() => {
-    if (!latestScan || !mission || latestScan.missionId !== mission.missionId) return;
-    setCapturedCount((c) => c + 1);
-  }, [latestScan]);
+  return <View className="flex-1 bg-surface">
+    <Header title="AI Analyze" />
+    <Page>
+      <Text className="text-[22px] font-extrabold text-slate-900">Patrol Photo Collections</Text>
+      <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
+        Every autonomous and manual patrol stores its photos as one collection. Completed patrols are analyzed automatically; Analyze Again runs the full collection manually.
+      </Text>
+      <Row className="mt-3 gap-2"><Badge label={status?.state === 'patrolling' ? 'AUTO PATROL RUNNING' : 'ROBOT IDLE'} /><Badge label={robotOnline ? 'ONLINE' : 'OFFLINE'} /></Row>
 
-  const canCapture = robotOnline && !!currentBlock;
-
-  return (
-    <View className="flex-1 bg-surface">
-      <Header title="AI Scan" />
-      <Page>
-        <Text className="text-[22px] font-extrabold text-slate-900">
-          AI Crop Health Scan
-        </Text>
-        <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
-          The robot photographs each plant while patrolling a mapped block. All photos are analyzed together
-          automatically once the patrol finishes — the result below is that finished report.
-        </Text>
-
-        <Row className="mt-3 gap-2 flex-wrap">
-          <Badge
-            label={patrolling ? 'PATROL IN PROGRESS' : 'IDLE'}
-            className={patrolling ? 'bg-amber-100' : 'bg-brand-50'}
-            textClassName={patrolling ? 'text-amber-700' : 'text-brand-700'}
-            dotClassName={patrolling ? 'bg-amber-500' : 'bg-brand-500'}
-          />
-          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
-        </Row>
-
-        {/* Live capture progress — count only, no per-image analysis UI */}
-        {patrolling && (
-          <Card className="mt-4">
-            <Row className="justify-between items-center">
-              <SectionTitle>CAPTURING PHOTOS</SectionTitle>
-              <ActivityIndicator size="small" color={colors.emerald600} />
-            </Row>
-            <Text className="text-[11px] text-slate-500 mt-1">
-              Photos are being taken as the robot reaches each plant. Analysis begins automatically once the patrol completes.
-            </Text>
-            <Row className="justify-between mt-3">
-              <Text className="text-xs font-semibold text-slate-500">Mission waypoint</Text>
-              <Text className="text-xs font-extrabold text-slate-900">{mission?.currentWaypoint ?? 0} / {mission?.waypoints.length ?? '—'}</Text>
-            </Row>
-            <Row className="justify-between mt-2">
-              <Text className="text-xs font-semibold text-slate-500">Photos captured so far</Text>
-              <Text className="text-xs font-extrabold text-slate-900">{capturedCount}</Text>
-            </Row>
-            {latestScan && (
-              <Row className="justify-between mt-2">
-                <Text className="text-xs font-semibold text-slate-500">Last photo captured</Text>
-                <Text className="text-xs font-extrabold text-slate-900">{latestScan.blockName ?? latestScan.blockId} • {timeAgo(latestScan.capturedAt)}</Text>
-              </Row>
-            )}
-          </Card>
-        )}
-
-        {/* Manual / ad-hoc capture — a real hardware capability, separate
-            from the automatic per-waypoint patrol capture. */}
-        <Card className="mt-4">
-          <SectionTitle>MANUAL CAPTURE</SectionTitle>
-          <Text className="text-[10px] text-slate-500 mt-1">
-            Take a photo right now (outside a patrol). Requires the robot to be online and inside a mapped block.
-          </Text>
-          <Row className="justify-between mt-3">
-            <Text className="text-xs font-semibold text-slate-500">Current block / AI model</Text>
-            <Text className="text-xs font-extrabold text-slate-900">
-              {currentBlock ? `${currentBlock.name} → ${currentBlock.aiModel ?? currentBlock.plant}` : 'Not in a mapped block'}
-            </Text>
+      <Card className="mt-4">
+        <SectionTitle>MANUAL PATROL COLLECTION</SectionTitle>
+        {!manualPatrol ? <>
+          <Text className="text-[11px] text-slate-500 mt-1">Choose the block first. Photos cannot be collected in manual mode until a manual patrol is started.</Text>
+          <Row className="gap-2 mt-3 flex-wrap">
+            {fieldMap?.blocks.map((b) => <TouchableOpacity key={b.id} onPress={() => setSelectedBlock(b.id)}
+              className={`px-3 py-2 rounded-full border ${selectedBlock === b.id ? 'bg-brand-600 border-brand-600' : 'bg-white border-slate-300'}`}>
+              <Text className={`text-xs font-bold ${selectedBlock === b.id ? 'text-white' : 'text-slate-700'}`}>{b.name} • {b.plant}</Text>
+            </TouchableOpacity>)}
           </Row>
+          <TouchableOpacity onPress={startManual} disabled={!robotOnline || !selectedBlock || working === 'manual'} className="bg-brand-600 rounded-xl py-3 mt-3 disabled:opacity-50">
+            <Text className="text-white text-center text-xs font-extrabold">START MANUAL PATROL</Text>
+          </TouchableOpacity>
+        </> : <>
+          <Text className="text-sm font-extrabold text-brand-700 mt-2">Collection #{manualPatrol.patrolId} • {manualPatrol.blockName}</Text>
           <Row className="gap-2 mt-3">
-            <TouchableOpacity
-              onPress={() => photoCmd.run()}
-              disabled={!canCapture || photoCmd.pending}
-              activeOpacity={0.85}
-              className={`flex-1 flex-row items-center justify-center bg-brand-600 rounded-xl py-2.5 ${!canCapture || photoCmd.pending ? 'opacity-50' : ''}`}
-            >
-              <Feather name="camera" size={15} color={colors.white} />
-              <Text className="text-xs font-extrabold text-white ml-1.5">{photoCmd.pending ? 'Capturing…' : 'Capture Photo'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => burstCmd.run()}
-              disabled={!canCapture || burstCmd.pending}
-              activeOpacity={0.85}
-              className={`flex-1 flex-row items-center justify-center bg-slate-100 rounded-xl py-2.5 ${!canCapture || burstCmd.pending ? 'opacity-50' : ''}`}
-            >
-              <MaterialCommunityIcons name="camera-burst" size={16} color={colors.slate700} />
-              <Text className="text-xs font-extrabold text-slate-700 ml-1.5">{burstCmd.pending ? 'Capturing…' : 'Capture Burst (2 photos)'}</Text>
-            </TouchableOpacity>
+            <TouchableOpacity onPress={() => photo.run()} disabled={photo.pending} className="flex-1 bg-brand-600 rounded-xl py-3"><Text className="text-white text-center text-xs font-extrabold">CAPTURE PHOTO</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => burst.run()} disabled={burst.pending} className="flex-1 bg-slate-800 rounded-xl py-3"><Text className="text-white text-center text-xs font-extrabold">CAPTURE BOTH SIDES</Text></TouchableOpacity>
           </Row>
-          <ActionFeedback result={photoCmd.result ?? burstCmd.result} />
-        </Card>
+          <TouchableOpacity onPress={finishManual} disabled={working === 'manual'} className="border border-rose-500 rounded-xl py-3 mt-3"><Text className="text-rose-600 text-center text-xs font-extrabold">END PATROL & AUTO ANALYZE</Text></TouchableOpacity>
+          <ActionFeedback result={photo.result ?? burst.result} />
+        </>}
+      </Card>
 
-        {/* The finished batch report — the ONLY place analysis results appear */}
-        <Card className="mt-4">
-          <Row className="justify-between">
-            <SectionTitle>LATEST PATROL REPORT</SectionTitle>
-            {loadingReport && <ActivityIndicator size="small" color={colors.emerald600} />}
-          </Row>
-          {!report ? (
-            <Text className="text-xs text-slate-500 mt-2">
-              No completed patrol report yet. Deploy a mission from the Location screen — a report is generated automatically when it finishes.
-            </Text>
-          ) : (
-            <>
-              <Text className="text-[11px] text-slate-500 mt-1">{report.summary}</Text>
-              <Row className="justify-between mt-3">
-                <Text className="text-xs font-semibold text-slate-500">Images analyzed</Text>
-                <Text className="text-xs font-extrabold text-slate-900">{report.report.imageCount}</Text>
-              </Row>
-              <Row className="justify-between mt-2">
-                <Text className="text-xs font-semibold text-slate-500">Blocks covered</Text>
-                <Text className="text-xs font-extrabold text-slate-900">{report.report.blocks.join(', ') || '—'}</Text>
-              </Row>
-              <Row className="justify-between mt-2">
-                <Text className="text-xs font-semibold text-slate-500">Completed</Text>
-                <Text className="text-xs font-extrabold text-slate-900">{timeAgo(report.report.completedAt)}</Text>
-              </Row>
-
-              <Text className="text-[10px] font-extrabold text-slate-400 mt-4 tracking-wide">CLASSIFICATION BREAKDOWN</Text>
-              <View className="mt-2 gap-2">
-                {report.report.averages.length === 0 && (
-                  <Text className="text-xs text-slate-500">No classifications recorded.</Text>
-                )}
-                {report.report.averages.map((a) => {
-                  const healthy = /healthy/i.test(a.className);
-                  return (
-                    <View
-                      key={a.className}
-                      className={`rounded-xl border-l-4 p-3 ${healthy ? 'bg-brand-50 border-brand-600' : 'bg-rose-50 border-rose-600'}`}
-                    >
-                      <Row className="justify-between">
-                        <Text className={`text-[11px] font-extrabold ${healthy ? 'text-brand-700' : 'text-rose-600'}`}>
-                          {a.className.replace(/_+/g, ' ')}
-                        </Text>
-                        <Text className={`text-[11px] font-extrabold ${healthy ? 'text-brand-700' : 'text-rose-600'}`}>
-                          {(a.averageConfidence * 100).toFixed(0)}% avg
-                        </Text>
-                      </Row>
-                      <Text className="text-[10px] text-slate-600 mt-1">{a.samples} sample(s)</Text>
-                    </View>
-                  );
-                })}
-              </View>
-
-              {report.report.scans.length > 0 && (
-                <>
-                  <Text className="text-[10px] font-extrabold text-slate-400 mt-4 tracking-wide">CAPTURED PHOTOS</Text>
-                  <Row className="mt-2 gap-2 flex-wrap">
-                    {report.report.scans.slice(0, 12).map((s) => (
-                      <View key={s.id} className="items-center">
-                        {token && (
-                          <Image
-                            source={{ uri: scanImageUrl(s.id, token) }}
-                            className="w-[72px] h-[54px] rounded-lg bg-slate-100"
-                            resizeMode="cover"
-                          />
-                        )}
-                        <Text className="text-[9px] font-bold text-slate-500 mt-1">{s.predictions?.[0]?.className?.replace(/_+/g, ' ') ?? '—'}</Text>
-                      </View>
-                    ))}
-                  </Row>
-                </>
-              )}
-            </>
-          )}
-        </Card>
-      </Page>
-    </View>
-  );
+      <Row className="justify-between mt-5"><SectionTitle>ALL COLLECTIONS</SectionTitle>{loading && <ActivityIndicator color={colors.emerald600} />}</Row>
+      {!loading && collections.length === 0 && <Card className="mt-2"><Text className="text-xs text-slate-500">No photos yet. Start a manual patrol or deploy an autonomous patrol.</Text></Card>}
+      {collections.map((c) => <Card key={c.id} className="mt-3">
+        <Row className="justify-between items-start">
+          <TouchableOpacity className="flex-1" onPress={() => setExpanded(expanded === c.id ? null : c.id)}>
+            <Text className="text-sm font-extrabold text-slate-900">Patrol #{c.id} • {(c.mode ?? 'auto').toUpperCase()}</Text>
+            <Text className="text-[10px] text-slate-500 mt-1">{c.notes || c.block_ids.join(', ') || 'Photo collection'} • {when(c.started_at)}</Text>
+            <Text className="text-xs font-bold text-brand-700 mt-2">{c.photo_count} photo(s) • {c.status}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => removeCollection(c.id)} className="p-2"><Feather name="trash-2" size={17} color={colors.rose500} /></TouchableOpacity>
+        </Row>
+        <Row className="gap-2 mt-3">
+          <TouchableOpacity onPress={() => analyze(c.id)} disabled={working === c.id} className="flex-1 bg-brand-600 rounded-xl py-2.5"><Text className="text-white text-center text-xs font-extrabold">{working === c.id ? 'ANALYZING…' : 'ANALYZE AGAIN'}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setExpanded(expanded === c.id ? null : c.id)} className="px-4 border border-slate-300 rounded-xl py-2.5"><Text className="text-xs font-bold text-slate-700">{expanded === c.id ? 'HIDE' : 'OPEN'}</Text></TouchableOpacity>
+        </Row>
+        {expanded === c.id && <View className="mt-3">
+          <Row className="gap-2 flex-wrap">{c.scans.map((scan) => <View key={scan.id} className="w-[112px] border border-slate-200 rounded-xl p-1.5">
+            {token && <Image source={{ uri: scanImageUrl(scan.id, token) }} className="w-full h-[76px] rounded-lg bg-slate-100" resizeMode="cover" />}
+            <Text className="text-[9px] font-extrabold text-slate-700 mt-1" numberOfLines={1}>{scan.predictions?.[0]?.className?.replace(/_+/g, ' ') || 'Not analyzed'}</Text>
+            <Text className="text-[9px] text-slate-400">{scan.side} • {scan.plant}</Text>
+            <TouchableOpacity onPress={() => removePhoto(scan.id)} className="mt-1 py-1"><Text className="text-[9px] font-bold text-rose-600 text-center">DELETE PHOTO</Text></TouchableOpacity>
+          </View>)}</Row>
+        </View>}
+      </Card>)}
+    </Page>
+  </View>;
 }

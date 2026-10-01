@@ -23,7 +23,8 @@ const PAD = 14;
 /* Projection = { toXY(lat,lng): {x,y}, toLatLng(x,y): [lat,lng] } */
 function useProjection(map: FieldMapMessage, width: number, height: number, fallbackCenter?: [number, number]) {
   return useMemo(() => {
-    let pts = [...map.boundary, ...map.blocks.flatMap((b) => b.polygon)];
+    let pts = [...map.boundary, ...map.blocks.flatMap((b) => b.polygon),
+      ...(map.base ? [[map.base.latitude, map.base.longitude] as [number, number]] : [])];
     if (pts.length === 0) {
       // Brand new, empty map (no blocks drawn yet): show a small empty canvas
       // centred on the robot's last known GPS fix (or Colombo) so there's
@@ -68,6 +69,7 @@ export default function FieldMap({
     return proj.toXY(la, ln);
   };
   const rover = location ? proj.toXY(location.latitude, location.longitude) : null;
+  const base = map.base ? proj.toXY(map.base.latitude, map.base.longitude) : null;
 
   const handleTap = (e: GestureResponderEvent) => {
     if (!onTapPoint) return;
@@ -117,6 +119,12 @@ export default function FieldMap({
                 const q = proj.toXY(p[0], p[1]);
                 return <Circle key={i} cx={q.x} cy={q.y} r={4} fill="#f59e0b" stroke="#fff" strokeWidth={1.5} />;
               })}
+            </>
+          )}
+          {base && (
+            <>
+              <Circle cx={base.x} cy={base.y} r={8} fill="#2563eb" stroke="#fff" strokeWidth={2} />
+              <SvgText x={base.x} y={base.y - 11} fontSize={9} fontWeight="bold" fill="#1d4ed8" textAnchor="middle">BASE</SvgText>
             </>
           )}
           {rover && (
