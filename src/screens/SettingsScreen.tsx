@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, IconBox, Row, ProgressBar, Page, CardRail } from '../components/ui';
@@ -15,8 +15,10 @@ import {
   linkWhatsApp,
   relinkWhatsApp,
   unlinkWhatsApp,
+  setWhatsAppEnabled,
   setWhatsAppOwner,
   sendWhatsAppTest,
+  WhatsAppSessionHealth,
   WhatsAppStatusDto,
 } from '../scripts/Api';
 import { FleetConfig } from '../types/actions';
@@ -171,13 +173,33 @@ export default function SettingsScreen() {
 /* WhatsApp Service card                                               */
 /* ------------------------------------------------------------------ */
 
-type WaAction = 'owner' | 'link' | 'relink' | 'unlink' | 'test';
+type WaAction = 'owner' | 'link' | 'relink' | 'unlink' | 'test' | 'toggle';
 
 const WA_STATE_BADGE: Record<string, { label: string; className: string; textClassName: string }> = {
   connected: { label: 'LINKED', className: 'bg-brand-50', textClassName: 'text-brand-700' },
   pairing: { label: 'PAIRING…', className: 'bg-amber-100', textClassName: 'text-amber-700' },
   idle: { label: 'NOT LINKED', className: 'bg-slate-100', textClassName: 'text-slate-500' },
-  disabled: { label: 'DISABLED', className: 'bg-slate-100', textClassName: 'text-slate-500' },
+  disabled: { label: 'OFF', className: 'bg-slate-100', textClassName: 'text-slate-500' },
+};
+
+/** Session verdict → how it is presented (badge + colour). */
+const WA_HEALTH: Record<WhatsAppSessionHealth, { label: string; className: string; textClassName: string; note: string }> = {
+  active: {
+    label: 'ACTIVE', className: 'bg-brand-100', textClassName: 'text-brand-700',
+    note: 'Session valid and connected right now.',
+  },
+  inactive: {
+    label: 'INACTIVE', className: 'bg-slate-100', textClassName: 'text-slate-600',
+    note: 'Session is saved on the server but the bot is switched off.',
+  },
+  invalid: {
+    label: 'SESSION INVALID', className: 'bg-rose-100', textClassName: 'text-rose-700',
+    note: 'This account was logged out (or the session was deleted) — link it again to use the bot.',
+  },
+  not_linked: {
+    label: 'NOT LINKED', className: 'bg-slate-100', textClassName: 'text-slate-500',
+    note: 'No WhatsApp account paired yet.',
+  },
 };
 
 const digitsOnly = (value: string): string => value.replace(/[^\d]/g, '');
@@ -288,8 +310,29 @@ function WhatsAppServiceCard({ token, isDemo }: { token: string | null; isDemo: 
   };
 
   const badge = WA_STATE_BADGE[status?.state ?? 'idle'] ?? WA_STATE_BADGE.idle;
+  const health = WA_HEALTH[status?.sessionHealth ?? 'not_linked'] ?? WA_HEALTH.not_linked;
   const busyAny = busy !== null;
   const connected = status?.state === 'connected';
+  const botOn = Boolean(status?.enabled);
+  const hasSession = Boolean(status?.sessionExists || status?.linkedNumber);
+
+  const toggleBot = (next: boolean) => {
+    if (!token) return;
+    const doIt = () => void run('toggle', () => setWhatsAppEnabled(token, next),
+      () => next
+        ? 'Bot switched ON — it reconnects with the saved session.'
+        : 'Bot switched OFF — the session stays saved, switch it back on any time.');
+    if (!next) {
+      // Switching off stops the chat control channel, so ask first.
+      Alert.alert(
+        'Switch the WhatsApp bot OFF?',
+        'The bot stops answering and stops forwarding commands. The linked session stays saved on the server — you can switch it back on here, or with `.bot on` from chat.',
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Switch OFF', style: 'destructive', onPress: doIt }],
+      );
+      return;
+    }
+    doIt();
+  };
 
   return (
     <Card className="mt-4">
@@ -311,6 +354,38 @@ function WhatsAppServiceCard({ token, isDemo }: { token: string | null; isDemo: 
         </Text>
       ) : (
         <>
+          {/* Bot ON/OFF switch + session health */}
+          <View className="border border-slate-200 rounded-xl p-3 mt-3">
+            <Row className="justify-between">
+              <View className="flex-1 pr-3">
+                <Text className="text-[13px] font-extrabold text-slate-800">WhatsApp bot</Text>
+                <Text className="text-[10px] text-slate-500 mt-0.5 leading-4">
+                  {hasSession
+                    ? 'ON keeps the bot listening in chat; OFF closes the session socket (the link stays saved, so it can be switched back on without pairing again).'
+                    : 'Link an account below first — then this switch starts and stops the bot.'}
+                </Text>
+              </View>
+              <Switch
+                value={botOn}
+                onValueChange={toggleBot}
+                disabled={busyAny || (!hasSession && !botOn)}
+                trackColor={{ false: colors.slate300, true: colors.emerald500 }}
+                thumbColor={colors.white}
+              />
+            </Row>
+            <Row className="justify-between mt-2.5">
+              <Text className="text-[11px] font-bold text-slate-500">Power</Text>
+              <Text className={`text-[12px] font-extrabold ${botOn ? 'text-brand-700' : 'text-slate-500'}`}>
+                {busy === 'toggle' ? 'switching…' : botOn ? 'ON' : 'OFF'}
+              </Text>
+            </Row>
+            <Row className="justify-between mt-1.5">
+              <Text className="text-[11px] font-bold text-slate-500">Session</Text>
+              <Badge label={health.label} className={health.className} textClassName={health.textClassName} />
+            </Row>
+            <Text className="text-[10px] text-slate-500 mt-1.5 leading-4">{health.note}</Text>
+          </View>
+
           {/* Session state */}
           <View className="bg-slate-50 rounded-xl p-3 mt-3">
             <Row className="justify-between">
@@ -437,9 +512,10 @@ function WhatsAppServiceCard({ token, isDemo }: { token: string | null; isDemo: 
               .menu · .status · .telemetry{'\n'}
               .mission deploy [block|all] · .mission_status · .mission_pause · .mission_resume · .stop{'\n'}
               .pump_on 60 · .pump_off · .pump_auto on|off · .pump_status{'\n'}
-              .alerts · .reports · .blocks · .owner set 94XXXXXXXXX
+              .alerts · .reports · .blocks · .owner set 94XXXXXXXXX · .bot on|off
             </Text>
             <Text className="text-[10px] text-slate-400 mt-2">
+              Reply buttons follow the live state (Pump ON only while it is off, resume/stop only when a mission is loaded).
               Every reply carries the footer “Powered by hazu@AlexaInc.github.io”.
             </Text>
           </View>

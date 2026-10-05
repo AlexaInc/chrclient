@@ -201,10 +201,13 @@ export const fetchConfig = (token: string) => authedGet<{ ok: boolean; config: F
 
 export type WhatsAppState = 'disabled' | 'idle' | 'pairing' | 'connected';
 
+/** Verdict for the stored session (server-computed, see chrserver's SessionHealth). */
+export type WhatsAppSessionHealth = 'active' | 'inactive' | 'invalid' | 'not_linked';
+
 export interface WhatsAppStatusDto {
   ok?: boolean;
   state: WhatsAppState;
-  /** should the service connect automatically after a restart */
+  /** the bot's on/off switch — when off, the socket is closed but the session stays */
   enabled: boolean;
   /** the ONLY number allowed to issue commands (E.164 digits, no "+") */
   ownerNumber: string | null;
@@ -213,6 +216,13 @@ export interface WhatsAppStatusDto {
   linkedAt: number | null;
   /** true when a session exists on disk (creds.json) */
   sessionExists: boolean;
+  /**
+   * active     - connected right now
+   * inactive   - session on disk, service currently off/starting
+   * invalid    - linked before but the session is gone → link again
+   * not_linked - nothing paired yet
+   */
+  sessionHealth: WhatsAppSessionHealth;
   /** pairing code to enter in WhatsApp → Linked devices, while state === 'pairing' */
   pairingCode: string | null;
   meNumber: string | null;
@@ -240,6 +250,9 @@ export const relinkWhatsApp = (token: string, number: string) =>
   postDetailed<WhatsAppStatusDto>('/api/whatsapp/relink', token, { number });
 export const unlinkWhatsApp = (token: string) =>
   postDetailed<WhatsAppStatusDto>('/api/whatsapp/unlink', token);
+/** The bot ON/OFF switch — off closes the socket but keeps the session on disk. */
+export const setWhatsAppEnabled = (token: string, enabled: boolean) =>
+  postDetailed<WhatsAppStatusDto>('/api/whatsapp/enabled', token, { enabled });
 export const setWhatsAppOwner = (token: string, number: string) =>
   postDetailed<WhatsAppStatusDto>('/api/whatsapp/owner', token, { number });
 export const sendWhatsAppTest = (token: string) =>
