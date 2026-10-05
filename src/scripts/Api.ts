@@ -190,6 +190,62 @@ export const fetchIrrigationHistory = (token: string, hours = 24) =>
 export const fetchConfig = (token: string) => authedGet<{ ok: boolean; config: FleetConfig }>('/api/config', token);
 
 /* ------------------------------------------------------------------ */
+/* WhatsApp service (Settings → "WhatsApp Service")                    */
+/*                                                                     */
+/* One WhatsApp account is paired to the server with a pairing code and */
+/* then operates the robot/pump from chat. These calls manage that link: */
+/* pair a fresh account, delete the session, relink another account and */
+/* store the owner number (country code required) that the bot's gate   */
+/* checks before it lets anybody touch the hardware.                    */
+/* ------------------------------------------------------------------ */
+
+export type WhatsAppState = 'disabled' | 'idle' | 'pairing' | 'connected';
+
+export interface WhatsAppStatusDto {
+  ok?: boolean;
+  state: WhatsAppState;
+  /** should the service connect automatically after a restart */
+  enabled: boolean;
+  /** the ONLY number allowed to issue commands (E.164 digits, no "+") */
+  ownerNumber: string | null;
+  /** number the current session was paired for */
+  linkedNumber: string | null;
+  linkedAt: number | null;
+  /** true when a session exists on disk (creds.json) */
+  sessionExists: boolean;
+  /** pairing code to enter in WhatsApp → Linked devices, while state === 'pairing' */
+  pairingCode: string | null;
+  meNumber: string | null;
+  lastError: string | null;
+}
+
+/** Same as authedPost, but surfaces the server's own error message (the
+ *  WhatsApp routes answer 400 with a human-readable reason, e.g. a number
+ *  without a country code) instead of just the HTTP status. */
+async function postDetailed<T>(path: string, token: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${SERVER_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body ?? {}),
+  });
+  const json = await res.json().catch(() => ({} as any));
+  if (!res.ok) throw new Error(json?.message ?? `POST ${path} failed (${res.status})`);
+  return json as T;
+}
+
+export const fetchWhatsAppStatus = (token: string) => authedGet<WhatsAppStatusDto>('/api/whatsapp', token);
+export const linkWhatsApp = (token: string, number: string) =>
+  postDetailed<WhatsAppStatusDto>('/api/whatsapp/link', token, { number });
+export const relinkWhatsApp = (token: string, number: string) =>
+  postDetailed<WhatsAppStatusDto>('/api/whatsapp/relink', token, { number });
+export const unlinkWhatsApp = (token: string) =>
+  postDetailed<WhatsAppStatusDto>('/api/whatsapp/unlink', token);
+export const setWhatsAppOwner = (token: string, number: string) =>
+  postDetailed<WhatsAppStatusDto>('/api/whatsapp/owner', token, { number });
+export const sendWhatsAppTest = (token: string) =>
+  postDetailed<WhatsAppStatusDto>('/api/whatsapp/test', token);
+
+/* ------------------------------------------------------------------ */
 /* Mission progress row type re-exported for screens that only need it */
 /* ------------------------------------------------------------------ */
 export type { MissionProgressMessage };
