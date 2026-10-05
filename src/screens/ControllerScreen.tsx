@@ -5,7 +5,9 @@ import Header from '../components/Header';
 import { Card, SectionTitle, Badge, Row, Page, useIsDesktop } from '../components/ui';
 import { colors } from '../theme';
 import { useRealtime } from '../realtime/RealtimeContext';
-import { changeRoverMode, drive, emergencyStop } from '../scripts/Commands';
+import { captureBurst, capturePhoto, changeRoverMode, drive, emergencyStop } from '../scripts/Commands';
+import { useAuth } from '../auth/AuthContext';
+import { endManualPatrol, fetchManualPatrol, startManualPatrol } from '../scripts/Api';
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 import { DriveDirection } from '../types/actions';
@@ -26,7 +28,8 @@ const SENSOR_LABELS = ['Front', 'Left', 'Right'];
 
 export default function ControllerScreen() {
   const isDesktop = useIsDesktop();
-  const { status, ultrasonic, currentBlock, isDemo, robotOnline } = useRealtime();
+  const { status, ultrasonic, currentBlock, fieldMap, isDemo, robotOnline } = useRealtime();
+  const { token } = useAuth();
   const [active, setActive] = useState<DriveDirection | null>(null);
   // Single source of truth: the server-broadcast status.mode (itself derived
   // from what the rover is really doing). A local useState here previously
@@ -36,6 +39,36 @@ export default function ControllerScreen() {
 
   const mode = useCommand(changeRoverMode);
   const eStop = useCommand(emergencyStop);
+  const photoCmd = useCommand(capturePhoto);
+  const burstCmd = useCommand(captureBurst);
+  const [selectedBlockId, setSelectedBlockId] = useState('');
+  const [manualPatrol, setManualPatrol] = useState<{ patrolId: number; blockName: string } | null>(null);
+  const [patrolBusy, setPatrolBusy] = useState(false);
+
+  useEffect(() => {
+    if (!selectedBlockId && fieldMap?.blocks[0]) setSelectedBlockId(fieldMap.blocks[0].id);
+  }, [fieldMap, selectedBlockId]);
+  useEffect(() => {
+    if (!token) return;
+    fetchManualPatrol(token).then((r) => setManualPatrol(r.patrol
+      ? { patrolId: r.patrol.patrolId, blockName: r.patrol.blockName } : null)).catch(() => undefined);
+  }, [token]);
+
+  const beginManualPatrol = async () => {
+    if (!token || !selectedBlockId) return;
+    setPatrolBusy(true);
+    try {
+      const r = await startManualPatrol(token, selectedBlockId);
+      setManualPatrol({ patrolId: r.patrol.patrolId, blockName: r.patrol.blockName });
+      await mode.run('manual');
+    } finally { setPatrolBusy(false); }
+  };
+  const finishManualPatrol = async () => {
+    if (!token) return;
+    stopDrive(); setPatrolBusy(true);
+    try { await endManualPatrol(token); setManualPatrol(null); }
+    finally { setPatrolBusy(false); }
+  };
 
   const stopDrive = useCallback(() => {
     if (repeatRef.current) clearInterval(repeatRef.current);
@@ -65,6 +98,8 @@ export default function ControllerScreen() {
   useEffect(() => {
     if (Platform.OS !== 'web' || !teleop) return;
     const down = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
       if (e.repeat) return;
       const k = e.key.toLowerCase();
       const map: Record<string, DriveDirection> = {
@@ -74,7 +109,9 @@ export default function ControllerScreen() {
         d: 'right', arrowright: 'right',
       };
       if (map[k]) { e.preventDefault(); startDrive(map[k]); }
-      if (k === ' ') { e.preventDefault(); stopDrive(); }
+      if (k === ' ' || k === 'escape') { e.preventDefault(); stopDrive(); }
+      if (k === 'c' && manualPatrol) { e.preventDefault(); photoCmd.run(); }
+      if (k === 'b' && manualPatrol) { e.preventDefault(); burstCmd.run(); }
     };
     const up = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
@@ -83,7 +120,7 @@ export default function ControllerScreen() {
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
-  }, [teleop, startDrive, stopDrive]);
+  }, [teleop, startDrive, stopDrive, manualPatrol, photoCmd.run, burstCmd.run]);
 
   useEffect(() => () => stopDrive(), [stopDrive]);
 
@@ -116,7 +153,7 @@ export default function ControllerScreen() {
         </Row>
         <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Manual Rover Controller</Text>
         <Text className="text-xs text-slate-500 mt-1.5">
-          {Platform.OS === 'web' ? 'Hold on-screen buttons or use WASD / arrow keys. Space = stop.' : 'Press and hold the direction buttons to drive.'}
+          {Platform.OS === 'web' ? 'WASD/arrows = drive • Space/Esc = stop • C = photo • B = both sides.' : 'Press and hold the direction buttons to drive.'}
         </Text>
 
         <View className={isDesktop ? 'flex-row gap-4 mt-4 items-start' : 'mt-4'}>
@@ -167,8 +204,24 @@ export default function ControllerScreen() {
             <ActionFeedback result={mode.result ?? eStop.result} />
           </Card>
 
-          {/* Live status panel */}
-          <Card className={isDesktop ? 'w-[320px]' : 'mt-4'}>
+          <View className={isDesktop ? 'w-[360px]' : 'mt-4'}>
+            <Card>
+              <Row className="justify-between"><SectionTitle>DRIVE + CAMERA</SectionTitle><Badge label={manualPatrol ? `PATROL #${manualPatrol.patrolId}` : 'NO COLLECTION'} /></Row>
+              {!manualPatrol ? <>
+                <Text className="text-[11px] text-slate-500 mt-2">Select a block and start a manual patrol before driving/capturing. Every photo will appear in that collection.</Text>
+                <Row className="gap-1.5 mt-2 flex-wrap">{fieldMap?.blocks.map((b) => <TouchableOpacity key={b.id} onPress={() => setSelectedBlockId(b.id)} className={`px-3 py-1.5 rounded-full border ${selectedBlockId === b.id ? 'bg-brand-600 border-brand-600' : 'bg-white border-slate-300'}`}><Text className={`text-[10px] font-bold ${selectedBlockId === b.id ? 'text-white' : 'text-slate-700'}`}>{b.name}</Text></TouchableOpacity>)}</Row>
+                <TouchableOpacity onPress={beginManualPatrol} disabled={!robotOnline || !selectedBlockId || patrolBusy} className="bg-brand-600 rounded-xl py-3 mt-3"><Text className="text-white text-center text-xs font-extrabold">START MANUAL PATROL</Text></TouchableOpacity>
+              </> : <>
+                <Text className="text-xs font-extrabold text-brand-700 mt-2">{manualPatrol.blockName}</Text>
+                <Row className="gap-2 mt-3"><TouchableOpacity onPress={() => photoCmd.run()} disabled={photoCmd.pending} className="flex-1 bg-brand-600 rounded-xl py-3"><Text className="text-white text-center text-xs font-extrabold">PHOTO (C)</Text></TouchableOpacity><TouchableOpacity onPress={() => burstCmd.run()} disabled={burstCmd.pending} className="flex-1 bg-slate-800 rounded-xl py-3"><Text className="text-white text-center text-xs font-extrabold">BOTH SIDES (B)</Text></TouchableOpacity></Row>
+                <TouchableOpacity onPress={finishManualPatrol} disabled={patrolBusy} className="border border-rose-500 rounded-xl py-2.5 mt-3"><Text className="text-rose-600 text-center text-xs font-extrabold">END PATROL & ANALYZE</Text></TouchableOpacity>
+              </>}
+              <Text className="text-[10px] text-slate-400 mt-2">PC shortcuts work while this page is open. Camera automatically returns to centre after the full right/left sweep.</Text>
+              <ActionFeedback result={photoCmd.result ?? burstCmd.result} />
+            </Card>
+
+            {/* Live status panel */}
+            <Card className="mt-4">
             <SectionTitle>LIVE PROXIMITY & STATUS</SectionTitle>
 
             <Row className="justify-between mt-3">
@@ -225,7 +278,8 @@ export default function ControllerScreen() {
                 {eStop.pending ? 'Stopping…' : 'EMERGENCY STOP'}
               </Text>
             </TouchableOpacity>
-          </Card>
+            </Card>
+          </View>
         </View>
       </Page>
     </View>

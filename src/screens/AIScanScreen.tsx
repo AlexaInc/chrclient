@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Image, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, SectionTitle, Badge, Row, Page } from '../components/ui';
@@ -11,10 +11,27 @@ import ActionFeedback from '../components/ActionFeedback';
 import { useAuth } from '../auth/AuthContext';
 import {
   analyzePhotoCollection, deletePhoto, deletePhotoCollection, endManualPatrol,
-  fetchPhotoCollections, PhotoCollectionDto, scanImageUrl, startManualPatrol,
+  fetchManualPatrol, fetchPhotoCollections, PhotoCollectionDto, scanImageUrl, startManualPatrol,
 } from '../scripts/Api';
 
 const when = (ts?: number | null) => ts ? new Date(ts).toLocaleString() : '—';
+
+// React Native Web's Alert.alert does not reliably support custom action
+// buttons. On web that meant the confirmation appeared (or was swallowed),
+// but the destructive callback never ran, so no DELETE request reached the
+// network tab. Use the browser's synchronous confirm there and native Alert
+// on Android/iOS.
+function confirmDelete(title: string, message: string): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    return Promise.resolve(globalThis.confirm(`${title}\n\n${message}`));
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
+}
 
 export default function AIScanScreen() {
   const { token } = useAuth();
@@ -37,6 +54,11 @@ export default function AIScanScreen() {
   }, [token]);
 
   useEffect(() => { void refresh(); }, [refresh, latestScan, latestReport]);
+  useEffect(() => {
+    if (!token) return;
+    fetchManualPatrol(token).then((r) => setManualPatrol(r.patrol
+      ? { patrolId: r.patrol.patrolId, blockName: r.patrol.blockName } : null)).catch(() => undefined);
+  }, [token]);
   useEffect(() => {
     if (!selectedBlock && fieldMap?.blocks[0]) setSelectedBlock(fieldMap.blocks[0].id);
   }, [fieldMap, selectedBlock]);
@@ -64,14 +86,28 @@ export default function AIScanScreen() {
     catch (e: any) { Alert.alert('Analysis failed', e?.message ?? String(e)); }
     finally { setWorking(null); }
   };
-  const removeCollection = (id: number) => Alert.alert('Delete collection?', 'All photo files and analysis results will be permanently deleted.', [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: async () => { if (!token) return; setWorking(id); try { await deletePhotoCollection(token, id); await refresh(); } finally { setWorking(null); } } },
-  ]);
-  const removePhoto = (id: number) => Alert.alert('Delete photo?', 'The image file and its predictions will be permanently deleted.', [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: async () => { if (!token) return; await deletePhoto(token, id); await refresh(); } },
-  ]);
+  const removeCollection = async (id: number) => {
+    if (!token || !(await confirmDelete('Delete collection?', 'All photo files and analysis results will be permanently deleted.'))) return;
+    setWorking(id);
+    try {
+      await deletePhotoCollection(token, id);
+      if (expanded === id) setExpanded(null);
+      await refresh();
+    } catch (e: any) {
+      Alert.alert('Delete failed', e?.message ?? String(e));
+    } finally {
+      setWorking(null);
+    }
+  };
+  const removePhoto = async (id: number) => {
+    if (!token || !(await confirmDelete('Delete photo?', 'The image file and its predictions will be permanently deleted.'))) return;
+    try {
+      await deletePhoto(token, id);
+      await refresh();
+    } catch (e: any) {
+      Alert.alert('Delete failed', e?.message ?? String(e));
+    }
+  };
 
   return <View className="flex-1 bg-surface">
     <Header title="AI Analyze" />

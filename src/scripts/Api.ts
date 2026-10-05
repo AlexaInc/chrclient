@@ -213,8 +213,11 @@ export const fetchPhotoCollections = (token: string) =>
   authedGet<{ ok: boolean; collections: PhotoCollectionDto[] }>('/api/photo-collections', token);
 export const analyzePhotoCollection = (token: string, patrolId: number) =>
   authedPost<{ ok: boolean; reportId: number; report: ReportDto['report'] }>(`/api/photo-collections/${patrolId}/analyze`, token);
+export interface ManualPatrolDto { patrolId: number; missionId: string; blockId: string; blockName: string; plant: string; startedAt: number; }
+export const fetchManualPatrol = (token: string) =>
+  authedGet<{ ok: boolean; patrol: ManualPatrolDto | null }>('/api/manual-patrol', token);
 export const startManualPatrol = (token: string, blockId: string) =>
-  authedPost<{ ok: boolean; patrol: { patrolId: number; missionId: string; blockId: string; blockName: string; plant: string } }>('/api/manual-patrol/start', token, { blockId });
+  authedPost<{ ok: boolean; patrol: ManualPatrolDto }>('/api/manual-patrol/start', token, { blockId });
 export const endManualPatrol = (token: string) =>
   authedPost<{ ok: boolean; reportId: number; report: ReportDto['report'] }>('/api/manual-patrol/end', token);
 
