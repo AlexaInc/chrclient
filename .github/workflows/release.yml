@@ -1,0 +1,414 @@
+# ---------------------------------------------------------------------------
+#  chrclient — one push builds everything and drops it on the Releases page.
+#
+#  Push to main / master  → Web + Android + iOS, published as the rolling
+#                           "latest" pre-release (its assets are replaced on
+#                           every run, so the newest build is always there).
+#  Push a tag (v1.0.1)    → the same three builds as a normal versioned release.
+#  Run workflow button    → same as a push; fill "release_tag" to version it.
+#
+#  No secret is required:
+#   * the APK is signed with the debug keystore the project already ships
+#     (add the ANDROID_KEYSTORE_* secrets to sign with your own key instead),
+#   * the iOS artefacts are unsigned — a Simulator app for a Mac and an .ipa
+#     that Sideloadly / AltStore can sign with your Apple ID.
+#  Optional settings (server URL, GitHub Pages, EAS) are in
+#  GITHUB_ACTIONS_GUIDE.md.
+# ---------------------------------------------------------------------------
+name: Build & Release
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publish under this version tag (e.g. v1.0.1). Empty = rolling latest build."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "20"
+  JAVA_VERSION: "17"
+  EXPO_NO_TELEMETRY: "1"
+  # Baked into the JS bundle at build time (src/config.ts reads it).
+  # Override with a repository variable named EXPO_PUBLIC_SERVER_URL.
+  EXPO_PUBLIC_SERVER_URL: ${{ vars.EXPO_PUBLIC_SERVER_URL || 'https://crophealth.dpdns.org' }}
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1 · work out the version + the tag the release will live under
+  # -------------------------------------------------------------------------
+  prepare:
+    name: 1 · Version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      version_code: ${{ steps.v.outputs.version_code }}
+      rolling: ${{ steps.v.outputs.rolling }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version and the release tag
+        id: v
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+          MANUAL_TAG: ${{ github.event.inputs.release_tag || '' }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = "tag" ]; then
+            TAG="$REF_NAME"                      # v1.0.1 -> release v1.0.1
+          elif [ -n "$MANUAL_TAG" ]; then
+            TAG="$MANUAL_TAG"                    # manual run with an explicit tag
+          else
+            TAG="latest"                         # push to main -> rolling release
+          fi
+
+          VERSION="${TAG#v}"
+          ROLLING=false
+          if [ "$TAG" = "latest" ]; then
+            ROLLING=true
+            BASE="$(node -p "require('./app.json').expo.version")"
+            BASE="${BASE%%-dev.*}"          # never stack "-dev." suffixes
+            VERSION="${BASE}-dev.${RUN_NUMBER}"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_code=$RUN_NUMBER" >> "$GITHUB_OUTPUT"   # monotonic
+          echo "rolling=$ROLLING" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Building \`$TAG\`"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Version | \`$VERSION\` |"
+            echo "| Android versionCode | \`$RUN_NUMBER\` |"
+            echo "| Release | \`$TAG\`$([ "$ROLLING" = "true" ] && echo ' (rolling, assets replaced)' || echo '') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------
+  # 2 · web — static bundle, ready for any web host / nginx / Pages
+  # -------------------------------------------------------------------------
+  web:
+    name: 2 · Web
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: write       # only used when the DEPLOY_PAGES variable is "true"
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Stamp the version into app.json
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          APP_VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
+        run: node .github/scripts/bump-version.js
+
+      - name: Typecheck (informative — never blocks the release)
+        continue-on-error: true
+        run: npx tsc --noEmit
+
+      - name: Build the web bundle
+        env:
+          CI: "1"
+        run: npx expo export --platform web --output-dir dist
+
+      - name: Package the bundle
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ROLLING: ${{ needs.prepare.outputs.rolling }}
+        run: |
+          set -euo pipefail
+          cp dist/index.html dist/404.html      # refreshes on static hosts
+          # A versioned release keeps the version in the file name; the rolling
+          # "latest" release uses stable names so each run replaces the assets
+          # instead of piling up one APK/zip per push.
+          NAME="chrclient-web"
+          if [ "$ROLLING" = "false" ]; then NAME="${NAME}-${VERSION}"; fi
+          (cd dist && zip -qry "../${NAME}.zip" .)
+          ls -lh dist chrclient-web*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: chrclient-web*.zip
+          retention-days: 30
+
+      # Optional: Settings → Pages → Source = "GitHub Actions",
+      # then add a repository variable DEPLOY_PAGES = true.
+      - name: Upload to GitHub Pages
+        if: vars.DEPLOY_PAGES == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - name: Deploy to GitHub Pages
+        if: vars.DEPLOY_PAGES == 'true'
+        uses: actions/deploy-pages@v4
+
+  # -------------------------------------------------------------------------
+  # 3 · android — release APK
+  # -------------------------------------------------------------------------
+  android:
+    name: 3 · Android
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 60
+    env:
+      # Empty unless the four secrets are set (see GITHUB_ACTIONS_GUIDE.md §5)
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Stamp the version into app.json
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          APP_VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
+        run: node .github/scripts/bump-version.js
+
+      - name: Generate the native Android project
+        env:
+          CI: "1"
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Decode your release keystore (skipped when no secret is set)
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        run: |
+          set -euo pipefail
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          ls -l "$RUNNER_TEMP/release.keystore"
+
+      - name: Point the release build at that keystore (falls back to the debug key)
+        run: node .github/scripts/patch-gradle-signing.js
+
+      - name: Build the release APK
+        env:
+          CHR_RELEASE_STORE_FILE: ${{ runner.temp }}/release.keystore
+          CHR_RELEASE_STORE_PASSWORD: ${{ env.ANDROID_KEYSTORE_PASSWORD }}
+          CHR_RELEASE_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
+          CHR_RELEASE_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd android
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Name the APK (version in the name only for tagged releases)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ROLLING: ${{ needs.prepare.outputs.rolling }}
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/release -name '*.apk' | head -n1)"
+          [ -n "$APK" ] || { echo "::error::no APK was produced"; exit 1; }
+          NAME="chrclient-android.apk"
+          if [ "$ROLLING" = "false" ]; then NAME="chrclient-android-${VERSION}.apk"; fi
+          cp "$APK" "$NAME"
+          ls -lh "$NAME"
+          {
+            echo ""
+            echo "APK: \`$NAME\` (version \`$VERSION\`, versionCode \`${{ needs.prepare.outputs.version_code }}\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: chrclient-android*.apk
+          retention-days: 30
+
+  # -------------------------------------------------------------------------
+  # 4 · ios — Simulator app + unsigned .ipa (no Apple account needed)
+  #     continue-on-error: a broken iOS toolchain must not block the
+  #     Android/Web release; check the run for a red iOS job.
+  # -------------------------------------------------------------------------
+  ios:
+    name: 4 · iOS
+    runs-on: macos-latest
+    needs: prepare
+    timeout-minutes: 90
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Stamp the version into app.json
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          APP_VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
+        run: node .github/scripts/bump-version.js
+
+      - name: Generate the native iOS project + pods
+        env:
+          CI: "1"
+        run: |
+          set -euo pipefail
+          npx expo prebuild --platform ios --no-install
+          cd ios
+          pod install
+
+      - name: Build for the Simulator
+        run: |
+          set -euo pipefail
+          WS="$(ls -d ios/*.xcworkspace | head -n1)"
+          SCHEME="$(basename "$WS" .xcworkspace)"
+          xcodebuild \
+            -workspace "$WS" -scheme "$SCHEME" -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd-sim" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Build the device app (unsigned)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          WS="$(ls -d ios/*.xcworkspace | head -n1)"
+          SCHEME="$(basename "$WS" .xcworkspace)"
+          xcodebuild \
+            -workspace "$WS" -scheme "$SCHEME" -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/dd-device" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package the apps
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ROLLING: ${{ needs.prepare.outputs.rolling }}
+        run: |
+          set -euo pipefail
+          APP="$(basename "$(ls -d ios/*.xcodeproj | head -n1)" .xcodeproj)"
+          SUFFIX=""
+          if [ "$ROLLING" = "false" ]; then SUFFIX="-${VERSION}"; fi
+
+          SIM="$RUNNER_TEMP/dd-sim/Build/Products/Release-iphonesimulator/$APP.app"
+          [ -d "$SIM" ] || { echo "::error::simulator app not found at $SIM"; exit 1; }
+          (cd "$(dirname "$SIM")" && zip -qry "$GITHUB_WORKSPACE/chrclient-ios${SUFFIX}-simulator.zip" "$APP.app")
+
+          DEV="$RUNNER_TEMP/dd-device/Build/Products/Release-iphoneos/$APP.app"
+          if [ -d "$DEV" ]; then
+            rm -rf "$RUNNER_TEMP/Payload"
+            mkdir -p "$RUNNER_TEMP/Payload"
+            cp -R "$DEV" "$RUNNER_TEMP/Payload/"
+            (cd "$RUNNER_TEMP" && zip -qry "$GITHUB_WORKSPACE/chrclient-ios${SUFFIX}.ipa" Payload)
+          else
+            echo "::warning::unsigned device build missing - only the Simulator app is in this release"
+          fi
+          ls -lh "$GITHUB_WORKSPACE"/chrclient-ios* || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: chrclient-ios*
+          if-no-files-found: warn
+          retention-days: 30
+
+  # -------------------------------------------------------------------------
+  # 5 · publish — every file that was built lands in one release
+  # -------------------------------------------------------------------------
+  release:
+    name: 5 · Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [prepare, web, android, ios]
+    if: always() && needs.prepare.result == 'success'
+    steps:
+      - name: Collect the build output
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Show what arrived
+        run: ls -lh
+
+      - name: Nothing was built?
+        run: |
+          set -euo pipefail
+          if ! ls chrclient-* >/dev/null 2>&1; then
+            echo "::error::no build output at all - nothing to publish"
+            exit 1
+          fi
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.rolling == 'true' && 'Latest build (main)' || needs.prepare.outputs.tag }} · ${{ needs.prepare.outputs.version }}
+          prerelease: ${{ needs.prepare.outputs.rolling == 'true' }}
+          make_latest: ${{ needs.prepare.outputs.rolling != 'true' }}
+          fail_on_unmatched_files: false
+          generate_release_notes: true
+          body: |
+            Automatic build of **${{ needs.prepare.outputs.version }}** (`${{ github.sha }}`).
+
+            | File | What it is |
+            | --- | --- |
+            | `chrclient-android*.apk` | Android app — copy to the phone, allow "install unknown apps", install. |
+            | `chrclient-web*.zip` | Static web app — unzip and serve it from any web host. |
+            | `chrclient-ios*-simulator.zip` | iOS Simulator app — unzip and drag into the Simulator on a Mac. |
+            | `chrclient-ios*.ipa` | iOS device app, **unsigned** — load it into Sideloadly / AltStore to sign it with your Apple ID. |
+
+            Server URL baked into these builds: `${{ vars.EXPO_PUBLIC_SERVER_URL || 'https://crophealth.dpdns.org' }}`
+          files: |
+            chrclient-android*.apk
+            chrclient-web*.zip
+            chrclient-ios*.zip
+            chrclient-ios*.ipa
+
+      - name: Build summary
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "### Platform results"
+            echo ""
+            echo "| Platform | Job |"
+            echo "|---|---|"
+            echo "| Web | ${{ needs.web.result }} |"
+            echo "| Android | ${{ needs.android.result }} |"
+            echo "| iOS | ${{ needs.ios.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

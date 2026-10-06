@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+#  OPTIONAL. Delete the ".example" from this file name to switch it on.
+#
+#  The normal release.yml builds everything on GitHub's machines for free and
+#  needs no account anywhere. This second workflow is for the other route:
+#  Expo's EAS Build servers (which can also hand you a signed .ipa for a real
+#  iPhone, and a store-ready .aab). It needs
+#    1. an Expo account, and
+#    2. a repository secret EXPO_TOKEN
+#       (expo.dev → Account settings → Access tokens → create token)
+#  Both are documented in GITHUB_ACTIONS_GUIDE.md §8.
+# ---------------------------------------------------------------------------
+name: EAS Build (optional)
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Which app(s) to build on EAS"
+        required: true
+        default: all
+        type: choice
+        options: [all, android, ios]
+      profile:
+        description: "eas.json profile"
+        required: true
+        default: production
+        type: choice
+        options: [development, preview, production]
+
+jobs:
+  eas:
+    name: EAS · ${{ inputs.platform }} / ${{ inputs.profile }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Queue the EAS build
+        env:
+          EXPO_NO_TELEMETRY: "1"
+        run: |
+          eas build \
+            --platform "${{ inputs.platform }}" \
+            --profile "${{ inputs.profile }}" \
+            --non-interactive --no-wait
+
+      - name: Where to watch / download it
+        run: |
+          {
+            echo "### EAS build queued"
+            echo ""
+            echo "Progress and the download link: https://expo.dev/accounts/$(npx eas-cli whoami)/projects/ai-crop-robot/builds"
+            echo ""
+            echo "(\`--no-wait\` was used: Expo keeps building after this job ends.)"
+          } >> "$GITHUB_STEP_SUMMARY"
