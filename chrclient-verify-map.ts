@@ -154,19 +154,35 @@ const page = runPage(buildLeafletHtml(DEFAULT_FIELD_POSITION.latitude, DEFAULT_F
   provider: DEFAULT_MAP_PROVIDER,
 }));
 
-// --- default layer: satellite imagery, high detail, with place labels -------
+// --- default layer: Google imagery (has coverage everywhere around the field)
 check(
-  page.tileUrls().some((u) => u.includes('World_Imagery')),
-  'the map opens on SATELLITE imagery (Esri/Maxar), not the cartoon road map',
+  page.tileUrls().some((u) => u.includes('mt{s}.google.com/vt') && u.includes('lyrs=y')),
+  'the map opens on GOOGLE imagery (satellite + labels), not the cartoon road map',
+);
+const googleCalls = page.find('tileLayer').filter((c) => String(c.args[0]).includes('google.com/vt'));
+check(
+  !!googleCalls.length && googleCalls[0].args[1].maxNativeZoom === 20 && googleCalls[0].args[1].maxZoom === 21,
+  'GOOGLE keeps zooming past its native zoom (upscaled) instead of refusing',
 );
 check(
-  page.tileUrls().some((u) => u.includes('World_Boundaries_and_Places')),
-  'place / road labels are drawn on top of the imagery so it stays readable',
+  JSON.stringify(googleCalls[0].args[1].subdomains) === JSON.stringify(['0', '1', '2', '3']),
+  'the Google layer uses all four tile subdomains (mt0-mt3) so tiles load in parallel',
 );
-const satCalls = page.find('tileLayer').filter((c) => String(c.args[0]).includes('World_Imagery'));
 check(
-  !!satCalls.length && satCalls[0].args[1].maxNativeZoom === 19 && satCalls[0].args[1].maxZoom === 21,
-  'satellite keeps zooming past its native zoom (upscaled) instead of refusing',
+  String(googleCalls[0].args[1].attribution).includes('Google'),
+  'the Google layer keeps its attribution (required by the provider)',
+);
+
+// --- Esri: no placeholder tiles, ever --------------------------------------
+const esriPage = runPage(buildLeafletHtml(7.48, 80.36, 20, { provider: 'satellite' }));
+const esriCalls = esriPage.find('tileLayer').filter((c) => String(c.args[0]).includes('World_Imagery'));
+check(
+  !!esriCalls.length && esriCalls[0].args[1].maxNativeZoom === 18 && esriCalls[0].args[1].maxZoom === 21,
+  'ESRI SAT asks for nothing past zoom 18 (its \"Map data not yet available\" grey tiles) and upscales the real photo above that',
+);
+check(
+  esriPage.tileUrls().some((u) => u.includes('World_Boundaries_and_Places')),
+  'Esri still gets the place/road label layer on top of the imagery',
 );
 
 // --- free zoom -------------------------------------------------------------
@@ -213,6 +229,11 @@ check(
 );
 page.el('p-terrain')?.click();
 check(page.tileUrls().some((u) => u.includes('opentopomap')), 'TERRAIN is available as a third provider');
+page.el('p-google')?.click();
+check(
+  page.tileUrls().some((u) => u.includes('mt{s}.google.com/vt')),
+  'tapping GOOGLE brings the imagery layer back — all four providers are one tap apart',
+);
 
 // --- tile outage: fall back, never a grey void ----------------------------
 const satellitePage = runPage(buildLeafletHtml(7.48, 80.36, 17, { provider: 'satellite' }));
@@ -222,8 +243,8 @@ const errHandler = satTile?.handlers?.tileerror?.[0];
 check(!!errHandler, 'the tile layer watches for tile errors');
 for (let i = 0; i < 8 && errHandler; i++) errHandler();
 check(
-  satellitePage.tileUrls().some((u) => u.includes('tile.openstreetmap.org')),
-  'if the satellite tiles fail, the map falls back to STREETS instead of going blank',
+  satellitePage.tileUrls().some((u) => u.includes('mt{s}.google.com/vt')),
+  'if the Esri tiles fail, the map falls back to GOOGLE instead of going blank',
 );
 check(
   satellitePage.el('status')?.textContent?.includes('UNAVAILABLE') === true,
@@ -263,8 +284,8 @@ const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'ut
 const has = (rel: string, needle: string, message: string) => check(read(rel).includes(needle), message);
 
 check(
-  DEFAULT_MAP_PROVIDER === 'satellite' && MAP_PROVIDERS.length === 3 && MAP_PROVIDERS[0].id === 'satellite',
-  'SATELLITE is the default provider in code, and it is the first choice in Settings',
+  DEFAULT_MAP_PROVIDER === 'google' && MAP_PROVIDERS.length === 4 && MAP_PROVIDERS[0].id === 'google',
+  'GOOGLE is the default provider in code, and it is the first choice in Settings',
 );
 has('src/state/Preferences.tsx', "KEY_MAP_PROVIDER = 'chrclient.prefs.mapProvider'", 'the map style is remembered on the device');
 has('src/screens/SettingsScreen.tsx', 'MAP STYLE', 'Settings has a MAP STYLE choice');

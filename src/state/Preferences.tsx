@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'nativewind';
 import { readPref, writePref } from './deviceStorage';
-import { DEFAULT_MAP_PROVIDER, MapProvider, isMapProvider } from '../map/leafletHtml';
+import { DEFAULT_MAP_PROVIDER, MapProvider, isMapProvider, migrateStoredProvider } from '../map/leafletHtml';
 import { DEFAULT_PUSH_SEVERITY, PushSeverity, isPushSeverity } from '../notifications/pushPlan';
 
 /**
@@ -12,9 +12,11 @@ import { DEFAULT_PUSH_SEVERITY, PushSeverity, isPushSeverity } from '../notifica
  *              for the dots to be a switch, not the other way round.
  *  darkMode  — app-wide dark theme, toggled from Settings or the side menu and
  *              remembered on this device.
- *  mapProvider — which tiles every live map draws. SATELLITE by default, because
- *              the operator maps crop blocks: the road map was a cartoon next to
- *              the imagery. Changeable from Settings and from the map itself.
+ *  mapProvider — which tiles every live map draws. GOOGLE imagery by default:
+ *              the operator maps crop blocks, and the Esri imagery that used to
+ *              be the default has no photos of much of the island (every tile
+ *              past its coverage reads "Map data not yet available").
+ *              Changeable from Settings and from the map itself.
  *  pushEnabled — master switch for phone notifications (Settings → NOTIFICATIONS).
  *              ON by default: the operator asked for the phone to be told about
  *              rain / petrol / offline events, so a fresh install asks for the
@@ -41,6 +43,7 @@ export interface Preferences {
 const KEY_GRAPH_DOTS = 'chrclient.prefs.graphDots';
 const KEY_DARK_MODE = 'chrclient.prefs.darkMode';
 const KEY_MAP_PROVIDER = 'chrclient.prefs.mapProvider';
+const KEY_MAP_PROVIDER_MIGRATED = 'chrclient.prefs.mapProvider.v2';
 const KEY_PUSH_ENABLED = 'chrclient.prefs.pushEnabled';
 const KEY_PUSH_SEVERITY = 'chrclient.prefs.pushSeverity';
 
@@ -57,7 +60,14 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   const [graphDots, setGraphDotsState] = useState<boolean>(() => boolFromStorage(KEY_GRAPH_DOTS, false));
   const [darkMode, setDarkModeState] = useState<boolean>(() => boolFromStorage(KEY_DARK_MODE, false));
   const [mapProvider, setMapProviderState] = useState<MapProvider>(() => {
-    const saved = readPref(KEY_MAP_PROVIDER);
+    // A phone that ran round 3 holds 'satellite' (that round's default) — the
+    // provider that has no imagery over most of the island. That choice is
+    // migrated to GOOGLE once; after that the operator's own pick always wins.
+    const saved = migrateStoredProvider(
+      { read: (key) => readPref(key), write: (key, value) => writePref(key, value) },
+      KEY_MAP_PROVIDER,
+      KEY_MAP_PROVIDER_MIGRATED,
+    );
     return isMapProvider(saved) ? saved : DEFAULT_MAP_PROVIDER;
   });
   const [pushEnabled, setPushEnabledState] = useState<boolean>(() => boolFromStorage(KEY_PUSH_ENABLED, true));

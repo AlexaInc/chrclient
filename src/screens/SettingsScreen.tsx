@@ -841,9 +841,11 @@ function DisplayAndAppCard() {
       <View className="mt-4 border border-slate-200 dark:border-slate-700 rounded-xl p-3">
         <Text className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200">MAP STYLE</Text>
         <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-4">
-          Which tiles the live maps draw. SATELLITE is the default: imagery shows the crop rows and the plot edges,
-          which a road map cannot. STREETS is OpenStreetMap, TERRAIN adds contour lines. You can also switch this from
-          the buttons on the map itself — all four maps follow this setting.
+          Which tiles the live maps draw. GOOGLE is the default: imagery with place names, and it has a real photo of
+          the field at every zoom. ESRI SAT is the older imagery layer — it has no coverage in some areas, and past
+          its newest photo it upscales that photo instead of showing “map data not yet available”. STREETS is
+          OpenStreetMap, TERRAIN adds contour lines. You can also switch this from the buttons on the map itself — all
+          four maps follow this setting.
         </Text>
         <Row className="gap-2 mt-2.5 flex-wrap">
           {MAP_PROVIDERS.map((p) => (

@@ -39,12 +39,21 @@
  *     field position and says so in a badge instead of an empty grey box.
  */
 
-export type MapProvider = 'satellite' | 'streets' | 'terrain';
+export type MapProvider = 'google' | 'satellite' | 'streets' | 'terrain';
 
-export const DEFAULT_MAP_PROVIDER: MapProvider = 'satellite';
+/**
+ * GOOGLE is the default. The Esri imagery that used to be the default simply has
+ * no photos of a lot of the island — zoom past its coverage and every tile says
+ * "Map data not yet available" (a grey tile with white text), which is exactly
+ * what the operator saw when zooming in over the field. Google's imagery covers
+ * the same spot down to street level, so the default is the provider that
+ * actually has the field in it.
+ */
+export const DEFAULT_MAP_PROVIDER: MapProvider = 'google';
 
 export const MAP_PROVIDERS: { id: MapProvider; label: string; hint: string }[] = [
-  { id: 'satellite', label: 'SATELLITE', hint: 'Esri / Maxar imagery — crop rows and plot edges' },
+  { id: 'google', label: 'GOOGLE', hint: 'Google imagery with place/road labels — detailed everywhere around the field' },
+  { id: 'satellite', label: 'ESRI SAT', hint: 'Esri / Maxar imagery (no coverage in some areas — zoomed in it upscales the newest real photo)' },
   { id: 'streets', label: 'STREETS', hint: 'OpenStreetMap roads, tracks and place names' },
   { id: 'terrain', label: 'TERRAIN', hint: 'OpenTopoMap contour lines for slopes' },
 ];
@@ -53,7 +62,30 @@ export const MAP_PROVIDERS: { id: MapProvider; label: string; hint: string }[] =
 export const DEFAULT_FIELD_POSITION = { latitude: 7.489087449264883, longitude: 80.36537714662697 };
 
 export function isMapProvider(value: unknown): value is MapProvider {
-  return value === 'satellite' || value === 'streets' || value === 'terrain';
+  return value === 'google' || value === 'satellite' || value === 'streets' || value === 'terrain';
+}
+
+/**
+ * Round-3 installations saved the old default ('satellite') on the device, so
+ * simply changing DEFAULT_MAP_PROVIDER would leave those phones on the provider
+ * without imagery. Stored choices are migrated once; after that the operator is
+ * free to pick ESRI SAT again and it sticks.
+ */
+export const LEGACY_DEFAULT_PROVIDER: MapProvider = 'satellite';
+
+export function migrateStoredProvider<T extends { read: (key: string) => string | null; write: (key: string, value: string) => void }>(
+  store: T,
+  key: string,
+  flagKey: string,
+): string | null {
+  const stored = store.read(key);
+  if (store.read(flagKey) === '1') return stored;
+  store.write(flagKey, '1');
+  if (stored === LEGACY_DEFAULT_PROVIDER) {
+    store.write(key, DEFAULT_MAP_PROVIDER);
+    return DEFAULT_MAP_PROVIDER;
+  }
+  return stored;
 }
 
 export interface LeafletPointIn {
@@ -144,7 +176,8 @@ export function buildLeafletHtml(
 <div id="map"></div>
 
 <div class="layers">
-  <button id="p-satellite" data-provider="satellite">SATELLITE</button>
+  <button id="p-google" data-provider="google">GOOGLE</button>
+  <button id="p-satellite" data-provider="satellite">ESRI SAT</button>
   <button id="p-streets" data-provider="streets">STREETS</button>
   <button id="p-terrain" data-provider="terrain">TERRAIN</button>
 </div>
@@ -164,17 +197,31 @@ export function buildLeafletHtml(
   var START_PROVIDER = '${provider}';
 
   /* ------------------------------------------------------------------ *
-   *  Tile providers.  SATELLITE is the default: the operator maps crop
+   *  Tile providers.  GOOGLE is the default: the operator maps crop
    *  blocks in a field, where a road map is a cartoon and the imagery is
-   *  the only layer that shows rows, plot edges and trees.  Each layer
-   *  keeps zooming past its native zoom by upscaling, so "zoom in where I
-   *  want" is never refused at the edge of the tile set.
+   *  the only layer that shows rows, plot edges and trees — and, unlike
+   *  the Esri layer that used to be the default, it has an actual photo
+   *  of the field at every zoom (Esri answers "Map data not yet
+   *  available" past its coverage, which is what made the map grey).
+   *  Each layer keeps zooming past its native zoom by upscaling, so
+   *  "zoom in where I want" is never refused at the edge of the tile set.
    * ------------------------------------------------------------------ */
   var PROVIDERS = {
+    google: {
+      label: 'GOOGLE',
+      url: 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=en',
+      subdomains: ['0', '1', '2', '3'],
+      native: 20, max: 21,
+      attribution: 'Imagery &copy; Google, Maxar Technologies'
+    },
     satellite: {
-      label: 'SATELLITE',
+      label: 'ESRI SAT',
+      // World_Imagery really ends at zoom 18 over this part of the island: from
+      // 19 up Esri answers with a placeholder tile that reads "Map data not yet
+      // available". Claiming native 19 asked for those placeholder tiles; 18 is
+      // the newest zoom with a real photo, and Leaflet upscales it from there.
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      native: 19, max: 21,
+      native: 18, max: 21,
       attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
       labels: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
     },
@@ -205,7 +252,7 @@ export function buildLeafletHtml(
 
   L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
 
-  var base = null, labels = null, providerId = null, tileErrors = 0, fellBack = false;
+  var base = null, labels = null, providerId = null, tileErrors = 0, fellBack = false, tried = [];
 
   function providerCfg(id) { return PROVIDERS[id] || PROVIDERS.satellite; }
 
@@ -218,6 +265,7 @@ export function buildLeafletHtml(
     base = L.tileLayer(cfg.url, {
       maxZoom: cfg.max,
       maxNativeZoom: cfg.native,
+      subdomains: cfg.subdomains || 'abc',
       attribution: cfg.attribution,
       crossOrigin: true
     }).addTo(map);
@@ -229,18 +277,26 @@ export function buildLeafletHtml(
       tileErrors++;
       if (tileErrors < 8) return;
       document.body.classList.add('no-tiles');
-      if (id === 'satellite' && !fellBack) {
-        // Esri blocked/slow: drop to OSM once so the operator still has a map
+      // Walk down a fixed order and stop at the first provider that answers:
+      // whatever was blocked (a firewall, a provider outage) the operator gets a
+      // map instead of a grey void, and the badge says which one is missing.
+      var order = ['google', 'satellite', 'streets', 'terrain'];
+      var next = null;
+      for (var i = 0; i < order.length; i++) {
+        if (order[i] !== id && tried.indexOf(order[i]) === -1) { next = order[i]; break; }
+      }
+      if (next && !fellBack) {
         fellBack = true;
-        setStatus('SATELLITE UNAVAILABLE — SWITCHED TO STREETS', 'warn');
-        useProvider('streets', true);
+        tried.push(id);
+        setStatus(providerCfg(id).label + ' UNAVAILABLE — SWITCHED TO ' + providerCfg(next).label, 'warn');
+        useProvider(next, true);
         return;
       }
       setStatus('MAP TILES OFFLINE — POSITION STILL LIVE', 'warn');
     });
     providerId = id;
     try { window.localStorage.setItem('chrclient.map.provider', id); } catch (e) { /* blocked storage */ }
-    ['satellite', 'streets', 'terrain'].forEach(function (key) {
+    ['google', 'satellite', 'streets', 'terrain'].forEach(function (key) {
       var b = document.getElementById('p-' + key);
       if (b) b.className = key === id ? 'on' : '';
     });
@@ -432,8 +488,18 @@ export function buildLeafletHtml(
   }
 
   /* Provider: the app's choice wins, then the last one used on this device. */
-  var wanted = PROVIDERS[START_PROVIDER] ? START_PROVIDER : 'satellite';
-  if (!wanted) { try { wanted = window.localStorage.getItem('chrclient.map.provider') || 'satellite'; } catch (e) { wanted = 'satellite'; } }
+  var wanted = PROVIDERS[START_PROVIDER] ? START_PROVIDER : 'google';
+  if (!wanted) { try { wanted = window.localStorage.getItem('chrclient.map.provider') || 'google'; } catch (e) { wanted = 'google'; } }
+  // A phone that still holds round-3's stored choice ('satellite') would keep
+  // the provider with no imagery, so the old default is migrated once.
+  var storedWanted = null;
+  try { storedWanted = window.localStorage.getItem('chrclient.map.provider'); } catch (e) { storedWanted = null; }
+  var migrated = null;
+  try { migrated = window.localStorage.getItem('chrclient.map.provider.v2'); } catch (e) { migrated = null; }
+  if (migrated !== '1') {
+    try { window.localStorage.setItem('chrclient.map.provider.v2', '1'); } catch (e) { /* blocked */ }
+    if (storedWanted === 'satellite') { wanted = 'google'; }
+  }
   useProvider(wanted, false);
   setStatus('LIVE MAP READY', 'ok');
 

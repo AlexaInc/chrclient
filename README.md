@@ -385,15 +385,20 @@ Nothing here needs code changes — where a step is one-time, it says so.
    arrive with the app closed.
 4. **Settings → DISPLAY & APP**: pick **DARK MODE** if the phone sits on the rover, and leave
    *Show dots on graphs* OFF (the smooth line is the default view).
-5. **Settings → MAP STYLE**: SATELLITE is the default. Change it to STREETS or TERRAIN from here
-   or from the buttons on any map — all four maps follow the choice.
+5. **Settings → MAP STYLE**: **GOOGLE** is the default (imagery with place names, detailed
+   everywhere around the field). ESRI SAT, STREETS and TERRAIN are one tap away, here or on the
+   map itself — all four maps follow the choice.
 
 ### 2. The map
 
 * **Zoom is free.** Pinch, or use `+` / `−` on the map, down to the whole island and up to
   street level (the imagery upscales past zoom 19 instead of going blank).
-* **Which tiles**: satellite imagery by default (Esri World Imagery with place labels),
-  OpenStreetMap for streets, OpenTopoMap for terrain contours.
+* **Which tiles**: **GOOGLE** imagery with place/road names by default. **ESRI SAT** is the older
+  imagery layer — it has no coverage over parts of the island (zoomed in, Esri answers
+  *"Map data not yet available"*), so past its newest real photo (zoom 18) the app upscales that
+  photo instead of asking for the grey tiles. **STREETS** is OpenStreetMap, **TERRAIN** adds
+  contour lines. If a provider is blocked or down, the map switches down a fixed order
+  (GOOGLE → ESRI SAT → STREETS → TERRAIN) and names the missing one in the badge.
 * **No robot connected?** The map still opens — on the field position
   `7.489087449264883, 80.36537714662697` with the note *DEFAULT POSITION • ROBOT OFFLINE*.
   An empty grey map means the phone has no tiles (no data); the position stays live.
@@ -401,6 +406,8 @@ Nothing here needs code changes — where a step is one-time, it says so.
   screenshot), and the row of chips switches provider without leaving the screen.
 * The rover's dot is coloured by GPS accuracy (green ≤ 15 m, amber ≤ 30 m, red beyond, with the
   `±Nm` figure beside it), and the recent GPS trail is drawn behind it.
+* Phones that were already on the old default are moved to GOOGLE **once** when they update; after
+  that your own choice in Settings always wins.
 
 ### 3. Mapping a crop block (mapping screen)
 
