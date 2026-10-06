@@ -35,25 +35,25 @@ export default function LoginModal() {
         className="flex-1"
       >
         <View className="flex-1 bg-slate-950/60 items-center justify-center p-6">
-          <View className="w-full max-w-[400px] bg-white rounded-2xl p-6">
+          <View className="w-full max-w-[400px] bg-white dark:bg-slate-900 rounded-2xl p-6">
             {/* Brand */}
             <View className="items-center mb-5">
-              <View className="w-16 h-16 rounded-2xl bg-white border border-slate-200 items-center justify-center overflow-hidden">
+              <View className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 items-center justify-center overflow-hidden">
                 {/* same logo the navbar and the loading screen use */}
                 <AppLogo size={56} />
               </View>
-              <Text className="text-lg font-extrabold text-slate-900 mt-3">AI CROP ROBOT</Text>
-              <Text className="text-[11px] font-semibold text-slate-400 mt-0.5">
+              <Text className="text-lg font-extrabold text-slate-900 dark:text-slate-100 mt-3">AI CROP ROBOT</Text>
+              <Text className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 mt-0.5">
                 Sign in to connect to the control server
               </Text>
             </View>
 
             {/* Username */}
-            <Text className="text-xs font-extrabold text-slate-700 mb-1.5">Username</Text>
-            <View className="flex-row items-center bg-slate-50 border border-slate-200 rounded-xl px-3">
+            <Text className="text-xs font-extrabold text-slate-700 dark:text-slate-200 mb-1.5">Username</Text>
+            <View className="flex-row items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3">
               <Feather name="user" size={16} color={colors.slate400} />
               <TextInput
-                className="flex-1 py-3 px-2.5 text-sm text-slate-900"
+                className="flex-1 py-3 px-2.5 text-sm text-slate-900 dark:text-slate-100"
                 placeholder="Enter username"
                 placeholderTextColor={colors.slate400}
                 autoCapitalize="none"
@@ -66,11 +66,11 @@ export default function LoginModal() {
             </View>
 
             {/* Password */}
-            <Text className="text-xs font-extrabold text-slate-700 mb-1.5 mt-4">Password</Text>
-            <View className="flex-row items-center bg-slate-50 border border-slate-200 rounded-xl px-3">
+            <Text className="text-xs font-extrabold text-slate-700 dark:text-slate-200 mb-1.5 mt-4">Password</Text>
+            <View className="flex-row items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3">
               <Feather name="lock" size={16} color={colors.slate400} />
               <TextInput
-                className="flex-1 py-3 px-2.5 text-sm text-slate-900"
+                className="flex-1 py-3 px-2.5 text-sm text-slate-900 dark:text-slate-100"
                 placeholder="Enter password"
                 placeholderTextColor={colors.slate400}
                 secureTextEntry={!showPassword}
@@ -89,9 +89,9 @@ export default function LoginModal() {
 
             {/* Error */}
             {loginError ? (
-              <View className="flex-row items-center bg-rose-100 rounded-lg px-3 py-2.5 mt-4">
+              <View className="flex-row items-center bg-rose-100 dark:bg-rose-900/40 rounded-lg px-3 py-2.5 mt-4">
                 <Feather name="alert-circle" size={14} color={colors.rose600} />
-                <Text className="text-xs font-bold text-rose-600 ml-2 flex-1">{loginError}</Text>
+                <Text className="text-xs font-bold text-rose-600 dark:text-rose-400 ml-2 flex-1">{loginError}</Text>
               </View>
             ) : null}
 
@@ -114,7 +114,7 @@ export default function LoginModal() {
               )}
             </TouchableOpacity>
 
-            <Text className="text-[10px] text-slate-400 text-center mt-4">
+            <Text className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-4">
               WebSocket connects automatically after successful sign-in
             </Text>
           </View>

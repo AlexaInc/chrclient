@@ -84,7 +84,7 @@ export function GridItem({
 
 export function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <View className={`bg-white rounded-2xl border border-slate-100 p-4 ${className}`}>
+    <View className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-4 ${className}`}>
       {children}
     </View>
   );
@@ -92,7 +92,7 @@ export function Card({ children, className = '' }: { children: React.ReactNode; 
 
 export function SectionTitle({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <Text className={`text-xs font-extrabold text-slate-700 tracking-wide ${className}`}>
+    <Text className={`text-xs font-extrabold text-slate-700 dark:text-slate-200 tracking-wide ${className}`}>
       {children}
     </Text>
   );
@@ -165,7 +165,7 @@ export function PillButton({
 export function ProgressBar({
   value,
   barClassName,
-  trackClassName = 'bg-slate-100',
+  trackClassName = 'bg-slate-100 dark:bg-slate-800',
   height = 8,
 }: {
   value: number;

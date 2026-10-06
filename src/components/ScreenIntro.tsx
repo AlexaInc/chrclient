@@ -25,21 +25,21 @@ export default function ScreenIntro({ badges, title, subtitle, eyebrow }: Props)
             <Badge
               key={b.label}
               label={b.label}
-              className={b.className ?? 'bg-brand-50'}
-              textClassName={b.textClassName ?? 'text-brand-700'}
+              className={b.className ?? 'bg-brand-50 dark:bg-brand-900/40'}
+              textClassName={b.textClassName ?? 'text-brand-700 dark:text-brand-300'}
               dotClassName={b.dotClassName}
             />
           ))}
         </Row>
       )}
       {eyebrow && (
-        <Text className="text-[10px] font-extrabold text-brand-700 tracking-wider mt-1">
+        <Text className="text-[10px] font-extrabold text-brand-700 dark:text-brand-300 tracking-wider mt-1">
           {eyebrow}
         </Text>
       )}
-      <Text className="text-[22px] font-extrabold text-slate-900 mt-3">{title}</Text>
+      <Text className="text-[22px] font-extrabold text-slate-900 dark:text-slate-100 mt-3">{title}</Text>
       {subtitle && (
-        <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">{subtitle}</Text>
+        <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-[18px]">{subtitle}</Text>
       )}
     </>
   );

@@ -11,6 +11,7 @@ import { endManualPatrol, fetchManualPatrol, startManualPatrol } from '../script
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 import { DriveDirection } from '../types/actions';
+import LiveMap, { DEFAULT_FIELD_LOCATION } from '../map/LiveMap';
 import { describeAvoidState, isAvoiding, isStuck } from '../scripts/robotMotion';
 
 const REPEAT_MS = 250; // resend rate while a direction is held
@@ -31,7 +32,21 @@ const SENSOR_LABELS = ['Front', 'Left ±', 'Right ±'];
 
 export default function ControllerScreen() {
   const isDesktop = useIsDesktop();
-  const { status, ultrasonic, currentBlock, fieldMap, isDemo, robotOnline } = useRealtime();
+  const { status, ultrasonic, currentBlock, fieldMap, isDemo, robotOnline, location, trail } = useRealtime();
+
+  /**
+   * The operator drives the rover while watching where it is, so the live map
+   * must never be hidden behind a tab or a scroll: it is pinned to the top of
+   * this screen on every layout (phone and desktop). With no GPS fix the map
+   * still opens on the field's own default position and says so.
+   */
+  const mapLocation = location ?? {
+    latitude: DEFAULT_FIELD_LOCATION.latitude,
+    longitude: DEFAULT_FIELD_LOCATION.longitude,
+    altitude: 0,
+    satellites: 0,
+    deviceId: 'default-field-position',
+  };
   // Speed limits the rover is really applying (from the firmware's own report).
   const motion = status?.motion;
   const { token } = useAuth();
@@ -147,7 +162,7 @@ export default function ControllerScreen() {
       onPressOut={stopDrive}
       activeOpacity={0.7}
       className={`w-20 h-20 lg:w-24 lg:h-24 rounded-2xl items-center justify-center border-2 ${
-        active === d.dir ? 'bg-brand-600 border-brand-600' : teleop ? 'bg-white border-brand-200' : 'bg-slate-100 border-slate-200'
+        active === d.dir ? 'bg-brand-600 border-brand-600' : teleop ? 'bg-white dark:bg-slate-900 border-brand-200 dark:border-brand-700' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
       }`}
     >
       <Feather name={d.icon} size={30} color={active === d.dir ? colors.white : teleop ? colors.emerald700 : colors.slate400} />
@@ -156,17 +171,42 @@ export default function ControllerScreen() {
   );
 
   return (
-    <View className="flex-1 bg-surface">
+    <View className="flex-1 bg-surface dark:bg-slate-950">
       <Header title="Controller" />
       <Page>
         <Row className="gap-2 flex-wrap">
-          <Badge label="MANUAL TELE-OPERATION" className="bg-brand-50" textClassName="text-brand-700" />
-          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
+          <Badge label="MANUAL TELE-OPERATION" className="bg-brand-50 dark:bg-brand-900/40" textClassName="text-brand-700 dark:text-brand-300" />
+          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100 dark:bg-amber-900/40" textClassName="text-amber-700 dark:text-amber-300" dotClassName="bg-amber-500" />}
         </Row>
-        <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Manual Rover Controller</Text>
-        <Text className="text-xs text-slate-500 mt-1.5">
+        <Text className="text-[22px] font-extrabold text-slate-900 dark:text-slate-100 mt-3">Manual Rover Controller</Text>
+        <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
           {Platform.OS === 'web' ? 'WASD/arrows = drive • Space/Esc = stop • C = photo • B = both sides.' : 'Press and hold the direction buttons to drive.'}
         </Text>
+
+        {/* Always-visible live map */}
+        <Card className="mt-4">
+          <Row className="justify-between">
+            <SectionTitle>LIVE MAP</SectionTitle>
+            <Badge
+              label={location ? (isDemo ? 'GPS • DEMO' : 'GPS LIVE') : 'NO FIX • DEFAULT POSITION'}
+              className={location ? 'bg-brand-50 dark:bg-brand-900/40' : 'bg-amber-100 dark:bg-amber-900/40'}
+              textClassName={location ? 'text-brand-700 dark:text-brand-300' : 'text-amber-700 dark:text-amber-300'}
+              dotClassName={location ? 'bg-brand-500' : 'bg-amber-500'}
+            />
+          </Row>
+          <View className="mt-3">
+            <LiveMap location={mapLocation} trail={trail} height={isDesktop ? 300 : 220} isDefault={!location} />
+          </View>
+          <Row className="justify-between mt-2.5">
+            <Text className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
+              {currentBlock ? `${currentBlock.name} — ${currentBlock.plant}` : 'Outside mapped blocks'}
+            </Text>
+            <Text className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+              {mapLocation.latitude.toFixed(5)}, {mapLocation.longitude.toFixed(5)}
+              {location ? ` • ${location.satellites} sats` : ' • default'}
+            </Text>
+          </Row>
+        </Card>
 
         <View className={isDesktop ? 'flex-row gap-4 mt-4 items-start' : 'mt-4'}>
           {/* Drive pad */}
@@ -175,8 +215,8 @@ export default function ControllerScreen() {
               <SectionTitle>DRIVE PAD</SectionTitle>
               <Badge
                 label={teleop ? 'MANUAL' : 'AUTONOMOUS'}
-                className={teleop ? 'bg-amber-100' : 'bg-brand-50'}
-                textClassName={teleop ? 'text-amber-700' : 'text-brand-700'}
+                className={teleop ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-brand-50 dark:bg-brand-900/40'}
+                textClassName={teleop ? 'text-amber-700 dark:text-amber-300' : 'text-brand-700 dark:text-brand-300'}
                 dotClassName={teleop ? 'bg-amber-500' : 'bg-brand-500'}
               />
             </Row>
@@ -220,13 +260,13 @@ export default function ControllerScreen() {
             <Card>
               <Row className="justify-between"><SectionTitle>DRIVE + CAMERA</SectionTitle><Badge label={manualPatrol ? `PATROL #${manualPatrol.patrolId}` : 'NO COLLECTION'} /></Row>
               {!manualPatrol ? <>
-                <Text className="text-[11px] text-slate-500 mt-2">Select a block and start a manual patrol before driving/capturing. Every photo will appear in that collection.</Text>
-                <Row className="gap-1.5 mt-2 flex-wrap">{fieldMap?.blocks.map((b) => <TouchableOpacity key={b.id} onPress={() => setSelectedBlockId(b.id)} className={`px-3 py-1.5 rounded-full border ${selectedBlockId === b.id ? 'bg-brand-600 border-brand-600' : 'bg-white border-slate-300'}`}><Text className={`text-[10px] font-bold ${selectedBlockId === b.id ? 'text-white' : 'text-slate-700'}`}>{b.name}</Text></TouchableOpacity>)}</Row>
+                <Text className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">Select a block and start a manual patrol before driving/capturing. Every photo will appear in that collection.</Text>
+                <Row className="gap-1.5 mt-2 flex-wrap">{fieldMap?.blocks.map((b) => <TouchableOpacity key={b.id} onPress={() => setSelectedBlockId(b.id)} className={`px-3 py-1.5 rounded-full border ${selectedBlockId === b.id ? 'bg-brand-600 border-brand-600' : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600'}`}><Text className={`text-[10px] font-bold ${selectedBlockId === b.id ? 'text-white' : 'text-slate-700 dark:text-slate-200'}`}>{b.name}</Text></TouchableOpacity>)}</Row>
                 <TouchableOpacity onPress={beginManualPatrol} disabled={!robotOnline || !selectedBlockId || patrolBusy} className="bg-brand-600 rounded-xl py-3 mt-3"><Text className="text-white text-center text-xs font-extrabold">START MANUAL PATROL</Text></TouchableOpacity>
               </> : <>
-                <Text className="text-xs font-extrabold text-brand-700 mt-2">{manualPatrol.blockName}</Text>
+                <Text className="text-xs font-extrabold text-brand-700 dark:text-brand-300 mt-2">{manualPatrol.blockName}</Text>
                 <Row className="gap-2 mt-3"><TouchableOpacity onPress={() => photoCmd.run()} disabled={photoCmd.pending} className="flex-1 bg-brand-600 rounded-xl py-3"><Text className="text-white text-center text-xs font-extrabold">PHOTO (C)</Text></TouchableOpacity><TouchableOpacity onPress={() => burstCmd.run()} disabled={burstCmd.pending} className="flex-1 bg-slate-800 rounded-xl py-3"><Text className="text-white text-center text-xs font-extrabold">BOTH SIDES (B)</Text></TouchableOpacity></Row>
-                <TouchableOpacity onPress={finishManualPatrol} disabled={patrolBusy} className="border border-rose-500 rounded-xl py-2.5 mt-3"><Text className="text-rose-600 text-center text-xs font-extrabold">END PATROL & ANALYZE</Text></TouchableOpacity>
+                <TouchableOpacity onPress={finishManualPatrol} disabled={patrolBusy} className="border border-rose-500 rounded-xl py-2.5 mt-3"><Text className="text-rose-600 dark:text-rose-400 text-center text-xs font-extrabold">END PATROL & ANALYZE</Text></TouchableOpacity>
               </>}
               <Text className="text-[10px] text-slate-400 mt-2">PC shortcuts work while this page is open. Camera automatically returns to centre after the full right/left sweep.</Text>
               <ActionFeedback result={photoCmd.result ?? burstCmd.result} />
@@ -237,28 +277,28 @@ export default function ControllerScreen() {
             <SectionTitle>LIVE PROXIMITY & STATUS</SectionTitle>
 
             <Row className="justify-between mt-3">
-              <Text className="text-xs font-semibold text-slate-500">Robot</Text>
-              <Text className={`text-xs font-extrabold ${robotOnline ? 'text-brand-700' : 'text-rose-600'}`}>
+              <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">Robot</Text>
+              <Text className={`text-xs font-extrabold ${robotOnline ? 'text-brand-700 dark:text-brand-300' : 'text-rose-600 dark:text-rose-400'}`}>
                 {robotOnline ? (status?.state ?? '').toUpperCase() : 'OFFLINE'}
               </Text>
             </Row>
             <Row className="justify-between mt-2.5">
-              <Text className="text-xs font-semibold text-slate-500">Current Block</Text>
-              <Text className="text-xs font-extrabold text-slate-900">
+              <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">Current Block</Text>
+              <Text className="text-xs font-extrabold text-slate-900 dark:text-slate-100">
                 {currentBlock ? `${currentBlock.name} (${currentBlock.plant})` : '—'}
               </Text>
             </Row>
             <Row className="justify-between mt-2.5">
-              <Text className="text-xs font-semibold text-slate-500">Speed limit</Text>
-              <Text className="text-xs font-extrabold text-slate-900">
+              <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">Speed limit</Text>
+              <Text className="text-xs font-extrabold text-slate-900 dark:text-slate-100">
                 {motion
                   ? `${motion.driveSpeedPercent}% drive${motion.drivePwm != null ? ` (${motion.drivePwm} PWM)` : ''}${motion.appliedPwm != null ? ` · now ${motion.appliedPwm} PWM` : ''}`
                   : '—'}
               </Text>
             </Row>
             <Row className="justify-between mt-2.5">
-              <Text className="text-xs font-semibold text-slate-500">Front arc</Text>
-              <Text className="text-xs font-extrabold text-slate-900">
+              <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">Front arc</Text>
+              <Text className="text-xs font-extrabold text-slate-900 dark:text-slate-100">
                 {motion?.sensorAngleLeftDeg != null
                   ? `±${motion.sensorAngleLeftDeg}° / ±${motion.sensorAngleRightDeg}°${motion.avoidAssist === false ? ' · assist off' : ''}`
                   : '—'}
@@ -274,14 +314,14 @@ export default function ControllerScreen() {
                 const pct = d != null ? Math.min(100, (d / 300) * 100) : 0;
                 return (
                   <Row key={label} className="items-center">
-                    <Text className="text-[10px] font-bold text-slate-500 w-12">{label}</Text>
-                    <View className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <Text className="text-[10px] font-bold text-slate-500 dark:text-slate-400 w-12">{label}</Text>
+                    <View className="flex-1 h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                       <View
                         className={`h-full rounded-full ${danger ? 'bg-rose-500' : 'bg-brand-500'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </View>
-                    <Text className={`text-[10px] font-extrabold w-14 text-right ${danger ? 'text-rose-600' : 'text-slate-700'}`}>
+                    <Text className={`text-[10px] font-extrabold w-14 text-right ${danger ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-200'}`}>
                       {d != null ? `${d.toFixed(0)} cm` : '—'}
                     </Text>
                   </Row>
@@ -289,16 +329,16 @@ export default function ControllerScreen() {
               })}
             </View>
             {obstacle && (
-              <View className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mt-3">
-                <Text className="text-[11px] font-extrabold text-rose-600">⚠ Obstacle under 30 cm — drive carefully</Text>
+              <View className="bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 rounded-lg px-3 py-2 mt-3">
+                <Text className="text-[11px] font-extrabold text-rose-600 dark:text-rose-400">⚠ Obstacle under 30 cm — drive carefully</Text>
               </View>
             )}
             {avoidLine && !failsafe && (
-              <View className={`border rounded-lg px-3 py-2 mt-3 ${stuck ? 'bg-rose-50 border-rose-200' : 'bg-brand-50 border-brand-200'}`}>
-                <Text className={`text-[11px] font-extrabold ${stuck ? 'text-rose-600' : 'text-brand-700'}`}>
+              <View className={`border rounded-lg px-3 py-2 mt-3 ${stuck ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800' : 'bg-brand-50 dark:bg-brand-900/40 border-brand-200 dark:border-brand-700'}`}>
+                <Text className={`text-[11px] font-extrabold ${stuck ? 'text-rose-600 dark:text-rose-400' : 'text-brand-700 dark:text-brand-300'}`}>
                   {avoidLine}
                 </Text>
-                <Text className={`text-[10px] mt-0.5 ${stuck ? 'text-rose-600' : 'text-brand-700'}`}>
+                <Text className={`text-[10px] mt-0.5 ${stuck ? 'text-rose-600 dark:text-rose-400' : 'text-brand-700 dark:text-brand-300'}`}>
                   {stuck
                     ? 'Neither side gap is wider than the rover, so it stopped instead of pushing through the crop row. Clear the row or drive it back manually.'
                     : avoiding
@@ -308,21 +348,21 @@ export default function ControllerScreen() {
               </View>
             )}
             {failsafe && (
-              <View className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
-                <Text className="text-[11px] font-extrabold text-amber-700">
+              <View className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mt-3">
+                <Text className="text-[11px] font-extrabold text-amber-700 dark:text-amber-300">
                   Robot cut its motors — no fresh drive command arrived (failsafe)
                 </Text>
-                <Text className="text-[10px] text-amber-700 mt-0.5">
+                <Text className="text-[10px] text-amber-700 dark:text-amber-300 mt-0.5">
                   The rover only moves again when a new drive command or a mission arrives.
                 </Text>
               </View>
             )}
             {brakeOnlyStop && (
-              <View className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
-                <Text className="text-[11px] font-extrabold text-amber-700">
+              <View className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mt-3">
+                <Text className="text-[11px] font-extrabold text-amber-700 dark:text-amber-300">
                   Robot stopped itself: obstacle inside the safety distance ({motion?.obstacleStopCm ?? 30} cm)
                 </Text>
-                <Text className="text-[10px] text-amber-700 mt-0.5">
+                <Text className="text-[10px] text-amber-700 dark:text-amber-300 mt-0.5">
                   Auto-avoid steering is off for manual driving — switch it on in Settings and the rover will steer
                   around plants instead of stopping at them.
                 </Text>

@@ -152,16 +152,30 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # The stamp is two things: the version written into app.json, and the
+      # build time (epoch milliseconds) that the app compares against the newest
+      # release to notice a rolling build of the same version.
       - name: Stamp the version into app.json
+        id: buildstamp
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           APP_VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
-        run: node .github/scripts/bump-version.js
+        run: |
+          node .github/scripts/bump-version.js
+          echo "epoch=$(($(date -u +%s) * 1000))" >> "$GITHUB_OUTPUT"
+
+      - name: Put the build stamp into the build environment
+        run: |
+          echo "EXPO_PUBLIC_BUILD_TIME=${{ steps.buildstamp.outputs.epoch }}" >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_BUILD_ID=${{ needs.prepare.outputs.version }}" >> "$GITHUB_ENV"
 
       - name: Typecheck (informative — never blocks the release)
         continue-on-error: true
         run: npx tsc --noEmit
 
+      # EXPO_PUBLIC_BUILD_TIME is baked into the bundle: the app compares it
+      # with the publish time of the newest release to notice a rolling build,
+      # whose tag ("latest") carries no version number of its own.
       - name: Build the web bundle
         env:
           CI: "1"
@@ -244,11 +258,22 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # The stamp is two things: the version written into app.json, and the
+      # build time (epoch milliseconds) that the app compares against the newest
+      # release to notice a rolling build of the same version.
       - name: Stamp the version into app.json
+        id: buildstamp
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           APP_VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
-        run: node .github/scripts/bump-version.js
+        run: |
+          node .github/scripts/bump-version.js
+          echo "epoch=$(($(date -u +%s) * 1000))" >> "$GITHUB_OUTPUT"
+
+      - name: Put the build stamp into the build environment
+        run: |
+          echo "EXPO_PUBLIC_BUILD_TIME=${{ steps.buildstamp.outputs.epoch }}" >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_BUILD_ID=${{ needs.prepare.outputs.version }}" >> "$GITHUB_ENV"
 
       - name: Generate the native Android project
         env:
@@ -390,11 +415,22 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # The stamp is two things: the version written into app.json, and the
+      # build time (epoch milliseconds) that the app compares against the newest
+      # release to notice a rolling build of the same version.
       - name: Stamp the version into app.json
+        id: buildstamp
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           APP_VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
-        run: node .github/scripts/bump-version.js
+        run: |
+          node .github/scripts/bump-version.js
+          echo "epoch=$(($(date -u +%s) * 1000))" >> "$GITHUB_OUTPUT"
+
+      - name: Put the build stamp into the build environment
+        run: |
+          echo "EXPO_PUBLIC_BUILD_TIME=${{ steps.buildstamp.outputs.epoch }}" >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_BUILD_ID=${{ needs.prepare.outputs.version }}" >> "$GITHUB_ENV"
 
       - name: Generate the native iOS project
         env:

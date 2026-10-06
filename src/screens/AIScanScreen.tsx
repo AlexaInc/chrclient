@@ -109,11 +109,11 @@ export default function AIScanScreen() {
     }
   };
 
-  return <View className="flex-1 bg-surface">
+  return <View className="flex-1 bg-surface dark:bg-slate-950">
     <Header title="AI Analyze" />
     <Page>
-      <Text className="text-[22px] font-extrabold text-slate-900">Patrol Photo Collections</Text>
-      <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
+      <Text className="text-[22px] font-extrabold text-slate-900 dark:text-slate-100">Patrol Photo Collections</Text>
+      <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-[18px]">
         Every autonomous and manual patrol stores its photos as one collection. Completed patrols are analyzed automatically; Analyze Again runs the full collection manually.
       </Text>
       <Row className="mt-3 gap-2"><Badge label={status?.state === 'patrolling' ? 'AUTO PATROL RUNNING' : 'ROBOT IDLE'} /><Badge label={robotOnline ? 'ONLINE' : 'OFFLINE'} /></Row>
@@ -121,48 +121,48 @@ export default function AIScanScreen() {
       <Card className="mt-4">
         <SectionTitle>MANUAL PATROL COLLECTION</SectionTitle>
         {!manualPatrol ? <>
-          <Text className="text-[11px] text-slate-500 mt-1">Choose the block first. Photos cannot be collected in manual mode until a manual patrol is started.</Text>
+          <Text className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Choose the block first. Photos cannot be collected in manual mode until a manual patrol is started.</Text>
           <Row className="gap-2 mt-3 flex-wrap">
             {fieldMap?.blocks.map((b) => <TouchableOpacity key={b.id} onPress={() => setSelectedBlock(b.id)}
-              className={`px-3 py-2 rounded-full border ${selectedBlock === b.id ? 'bg-brand-600 border-brand-600' : 'bg-white border-slate-300'}`}>
-              <Text className={`text-xs font-bold ${selectedBlock === b.id ? 'text-white' : 'text-slate-700'}`}>{b.name} • {b.plant}</Text>
+              className={`px-3 py-2 rounded-full border ${selectedBlock === b.id ? 'bg-brand-600 border-brand-600' : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600'}`}>
+              <Text className={`text-xs font-bold ${selectedBlock === b.id ? 'text-white' : 'text-slate-700 dark:text-slate-200'}`}>{b.name} • {b.plant}</Text>
             </TouchableOpacity>)}
           </Row>
           <TouchableOpacity onPress={startManual} disabled={!robotOnline || !selectedBlock || working === 'manual'} className="bg-brand-600 rounded-xl py-3 mt-3 disabled:opacity-50">
             <Text className="text-white text-center text-xs font-extrabold">START MANUAL PATROL</Text>
           </TouchableOpacity>
         </> : <>
-          <Text className="text-sm font-extrabold text-brand-700 mt-2">Collection #{manualPatrol.patrolId} • {manualPatrol.blockName}</Text>
+          <Text className="text-sm font-extrabold text-brand-700 dark:text-brand-300 mt-2">Collection #{manualPatrol.patrolId} • {manualPatrol.blockName}</Text>
           <Row className="gap-2 mt-3">
             <TouchableOpacity onPress={() => photo.run()} disabled={photo.pending} className="flex-1 bg-brand-600 rounded-xl py-3"><Text className="text-white text-center text-xs font-extrabold">CAPTURE PHOTO</Text></TouchableOpacity>
             <TouchableOpacity onPress={() => burst.run()} disabled={burst.pending} className="flex-1 bg-slate-800 rounded-xl py-3"><Text className="text-white text-center text-xs font-extrabold">CAPTURE BOTH SIDES</Text></TouchableOpacity>
           </Row>
-          <TouchableOpacity onPress={finishManual} disabled={working === 'manual'} className="border border-rose-500 rounded-xl py-3 mt-3"><Text className="text-rose-600 text-center text-xs font-extrabold">END PATROL & AUTO ANALYZE</Text></TouchableOpacity>
+          <TouchableOpacity onPress={finishManual} disabled={working === 'manual'} className="border border-rose-500 rounded-xl py-3 mt-3"><Text className="text-rose-600 dark:text-rose-400 text-center text-xs font-extrabold">END PATROL & AUTO ANALYZE</Text></TouchableOpacity>
           <ActionFeedback result={photo.result ?? burst.result} />
         </>}
       </Card>
 
       <Row className="justify-between mt-5"><SectionTitle>ALL COLLECTIONS</SectionTitle>{loading && <ActivityIndicator color={colors.emerald600} />}</Row>
-      {!loading && collections.length === 0 && <Card className="mt-2"><Text className="text-xs text-slate-500">No photos yet. Start a manual patrol or deploy an autonomous patrol.</Text></Card>}
+      {!loading && collections.length === 0 && <Card className="mt-2"><Text className="text-xs text-slate-500 dark:text-slate-400">No photos yet. Start a manual patrol or deploy an autonomous patrol.</Text></Card>}
       {collections.map((c) => <Card key={c.id} className="mt-3">
         <Row className="justify-between items-start">
           <TouchableOpacity className="flex-1" onPress={() => setExpanded(expanded === c.id ? null : c.id)}>
-            <Text className="text-sm font-extrabold text-slate-900">Patrol #{c.id} • {(c.mode ?? 'auto').toUpperCase()}</Text>
-            <Text className="text-[10px] text-slate-500 mt-1">{c.notes || c.block_ids.join(', ') || 'Photo collection'} • {when(c.started_at)}</Text>
-            <Text className="text-xs font-bold text-brand-700 mt-2">{c.photo_count} photo(s) • {c.status}</Text>
+            <Text className="text-sm font-extrabold text-slate-900 dark:text-slate-100">Patrol #{c.id} • {(c.mode ?? 'auto').toUpperCase()}</Text>
+            <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">{c.notes || c.block_ids.join(', ') || 'Photo collection'} • {when(c.started_at)}</Text>
+            <Text className="text-xs font-bold text-brand-700 dark:text-brand-300 mt-2">{c.photo_count} photo(s) • {c.status}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => removeCollection(c.id)} className="p-2"><Feather name="trash-2" size={17} color={colors.rose500} /></TouchableOpacity>
         </Row>
         <Row className="gap-2 mt-3">
           <TouchableOpacity onPress={() => analyze(c.id)} disabled={working === c.id} className="flex-1 bg-brand-600 rounded-xl py-2.5"><Text className="text-white text-center text-xs font-extrabold">{working === c.id ? 'ANALYZING…' : 'ANALYZE AGAIN'}</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setExpanded(expanded === c.id ? null : c.id)} className="px-4 border border-slate-300 rounded-xl py-2.5"><Text className="text-xs font-bold text-slate-700">{expanded === c.id ? 'HIDE' : 'OPEN'}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setExpanded(expanded === c.id ? null : c.id)} className="px-4 border border-slate-300 dark:border-slate-600 rounded-xl py-2.5"><Text className="text-xs font-bold text-slate-700 dark:text-slate-200">{expanded === c.id ? 'HIDE' : 'OPEN'}</Text></TouchableOpacity>
         </Row>
         {expanded === c.id && <View className="mt-3">
-          <Row className="gap-2 flex-wrap">{c.scans.map((scan) => <View key={scan.id} className="w-[112px] border border-slate-200 rounded-xl p-1.5">
-            {token && <Image source={{ uri: scanImageUrl(scan.id, token) }} className="w-full h-[76px] rounded-lg bg-slate-100" resizeMode="cover" />}
-            <Text className="text-[9px] font-extrabold text-slate-700 mt-1" numberOfLines={1}>{scan.predictions?.[0]?.className?.replace(/_+/g, ' ') || 'Not analyzed'}</Text>
+          <Row className="gap-2 flex-wrap">{c.scans.map((scan) => <View key={scan.id} className="w-[112px] border border-slate-200 dark:border-slate-700 rounded-xl p-1.5">
+            {token && <Image source={{ uri: scanImageUrl(scan.id, token) }} className="w-full h-[76px] rounded-lg bg-slate-100 dark:bg-slate-800" resizeMode="cover" />}
+            <Text className="text-[9px] font-extrabold text-slate-700 dark:text-slate-200 mt-1" numberOfLines={1}>{scan.predictions?.[0]?.className?.replace(/_+/g, ' ') || 'Not analyzed'}</Text>
             <Text className="text-[9px] text-slate-400">{scan.side} • {scan.plant}</Text>
-            <TouchableOpacity onPress={() => removePhoto(scan.id)} className="mt-1 py-1"><Text className="text-[9px] font-bold text-rose-600 text-center">DELETE PHOTO</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => removePhoto(scan.id)} className="mt-1 py-1"><Text className="text-[9px] font-bold text-rose-600 dark:text-rose-400 text-center">DELETE PHOTO</Text></TouchableOpacity>
           </View>)}</Row>
         </View>}
       </Card>)}

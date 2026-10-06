@@ -24,9 +24,9 @@ function timeAgo(ts: number | string | undefined): string {
 }
 
 const SEVERITY_STYLE: Record<AlertEntry['severity'], { badge: string; text: string; iconBg: string; icon: keyof typeof Feather.glyphMap; color: string }> = {
-  critical: { badge: 'bg-rose-100', text: 'text-rose-600', iconBg: 'bg-rose-100', icon: 'alert-octagon', color: colors.rose600 },
-  warning: { badge: 'bg-amber-100', text: 'text-amber-700', iconBg: 'bg-amber-100', icon: 'alert-triangle', color: colors.amber600 },
-  info: { badge: 'bg-blue-100', text: 'text-blue-700', iconBg: 'bg-blue-100', icon: 'info', color: colors.blue600 },
+  critical: { badge: 'bg-rose-100 dark:bg-rose-900/40', text: 'text-rose-600 dark:text-rose-400', iconBg: 'bg-rose-100 dark:bg-rose-900/40', icon: 'alert-octagon', color: colors.rose600 },
+  warning: { badge: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700 dark:text-amber-300', iconBg: 'bg-amber-100 dark:bg-amber-900/40', icon: 'alert-triangle', color: colors.amber600 },
+  info: { badge: 'bg-blue-100 dark:bg-blue-900/40', text: 'text-blue-700', iconBg: 'bg-blue-100 dark:bg-blue-900/40', icon: 'info', color: colors.blue600 },
 };
 
 export default function AlertsScreen() {
@@ -61,36 +61,39 @@ export default function AlertsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-surface">
+    <View className="flex-1 bg-surface dark:bg-slate-950">
       <Header title="Alerts" />
       <Page>
         <Row className="gap-2 flex-wrap">
-          <Badge label="LIVE ALERT STREAM" className="bg-rose-100" textClassName="text-rose-600" />
-          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
+          <Badge label="LIVE ALERT STREAM" className="bg-rose-100 dark:bg-rose-900/40" textClassName="text-rose-600 dark:text-rose-400" />
+          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100 dark:bg-amber-900/40" textClassName="text-amber-700 dark:text-amber-300" dotClassName="bg-amber-500" />}
         </Row>
-        <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Alerts</Text>
-        <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
+        <Text className="text-[22px] font-extrabold text-slate-900 dark:text-slate-100 mt-3">Alerts</Text>
+        <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-[18px]">
           Device offline/online transitions, rain detection, mission faults, low soil moisture, disease detections, and completed patrol reports.
+          The counters reset by themselves: an alert is acknowledged automatically a few seconds after it arrives
+          (repeats of the same GPS / field-map message are collapsed onto the newest one), so the badge returns to zero
+          without anybody pressing a button — and nothing disappears from this history.
         </Text>
 
         <Row className="mt-3.5 gap-3 flex-wrap">
           <View className="flex-row items-center gap-1.5">
             <View className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-            <Text className="text-[11px] font-bold text-slate-600">{critCount} Critical</Text>
+            <Text className="text-[11px] font-bold text-slate-600 dark:text-slate-300">{critCount} Critical</Text>
           </View>
           <View className="flex-row items-center gap-1.5">
             <View className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-            <Text className="text-[11px] font-bold text-slate-600">{warnCount} Warning</Text>
+            <Text className="text-[11px] font-bold text-slate-600 dark:text-slate-300">{warnCount} Warning</Text>
           </View>
           <View className="flex-row items-center gap-1.5">
             <View className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-            <Text className="text-[11px] font-bold text-slate-600">{infoCount} Info</Text>
+            <Text className="text-[11px] font-bold text-slate-600 dark:text-slate-300">{infoCount} Info</Text>
           </View>
         </Row>
 
         <Row className="mt-3.5 gap-2.5 lg:max-w-[400px]">
           <PillButton
-            label={ackAll.pending ? 'Acknowledging…' : `Acknowledge All (${unacknowledgedIds.length})`}
+            label={ackAll.pending ? 'Clearing…' : `Clear counter now (${unacknowledgedIds.length})`}
             className={`flex-1 bg-brand-600 ${ackAll.pending || unacknowledgedIds.length === 0 ? 'opacity-60' : ''}`}
             textClassName="text-white"
             onPress={handleAckAll}
@@ -118,24 +121,24 @@ export default function AlertsScreen() {
                 return (
                   <View
                     key={a.id}
-                    className={`flex-row items-start py-3 ${i > 0 ? 'border-t border-slate-100' : ''}`}
+                    className={`flex-row items-start py-3 ${i > 0 ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}
                   >
                     <IconBox className={s.iconBg} size={38}>
                       <Feather name={s.icon} size={18} color={s.color} />
                     </IconBox>
                     <View className="flex-1 ml-3">
-                      <Text className="text-xs font-extrabold text-slate-800">{a.title}</Text>
-                      {!!a.description && <Text className="text-[10px] text-slate-500 mt-0.5">{a.description}</Text>}
+                      <Text className="text-xs font-extrabold text-slate-800 dark:text-slate-100">{a.title}</Text>
+                      {!!a.description && <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{a.description}</Text>}
                       <Row className="mt-1.5 gap-2 flex-wrap">
                         <Badge label={a.severity.toUpperCase()} className={s.badge} textClassName={s.text} />
-                        {a.acknowledgedAt && <Badge label="ACKNOWLEDGED" className="bg-slate-100" textClassName="text-slate-500" />}
+                        {a.acknowledgedAt && <Badge label="ACKNOWLEDGED" className="bg-slate-100 dark:bg-slate-800" textClassName="text-slate-500 dark:text-slate-400" />}
                       </Row>
                     </View>
                     <View className="items-end">
                       <Text className="text-[10px] font-bold text-slate-400">{timeAgo(a.timestamp ?? a.receivedAt)}</Text>
                       {!a.acknowledgedAt && (
                         <TouchableOpacity onPress={() => handleAckOne(a.id)} activeOpacity={0.7} className="mt-1.5">
-                          <Text className="text-[10px] font-extrabold text-brand-700">Acknowledge</Text>
+                          <Text className="text-[10px] font-extrabold text-brand-700 dark:text-brand-300">Acknowledge</Text>
                         </TouchableOpacity>
                       )}
                     </View>

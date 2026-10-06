@@ -66,7 +66,7 @@ export default function ReportsScreen() {
       value: String(reports.length),
       sub: `${totalImages} images analyzed total`,
       note: 'Auto-generated on patrol completion',
-      iconBg: 'bg-brand-100',
+      iconBg: 'bg-brand-100 dark:bg-brand-900/50',
       icon: <Feather name="file-text" size={18} color={colors.emerald600} />,
     },
     {
@@ -74,7 +74,7 @@ export default function ReportsScreen() {
       value: String(diseaseCount),
       sub: totalSamples > 0 ? `${((diseaseCount / totalSamples) * 100).toFixed(0)}% of classifications` : '—',
       note: 'Non-"healthy" classifications',
-      iconBg: diseaseCount > 0 ? 'bg-rose-100' : 'bg-brand-100',
+      iconBg: diseaseCount > 0 ? 'bg-rose-100 dark:bg-rose-900/40' : 'bg-brand-100 dark:bg-brand-900/50',
       icon: <MaterialCommunityIcons name="leaf-off" size={20} color={diseaseCount > 0 ? colors.rose600 : colors.emerald600} />,
     },
     {
@@ -82,21 +82,21 @@ export default function ReportsScreen() {
       value: avgConfidence != null ? `${(avgConfidence * 100).toFixed(0)}%` : '—',
       sub: `${totalSamples} classifications`,
       note: 'Across all reports',
-      iconBg: 'bg-blue-100',
+      iconBg: 'bg-blue-100 dark:bg-blue-900/40',
       icon: <Feather name="cpu" size={18} color={colors.blue600} />,
     },
   ];
 
   return (
-    <View className="flex-1 bg-surface">
+    <View className="flex-1 bg-surface dark:bg-slate-950">
       <Header title="Reports" />
       <Page>
         <Row className="gap-2 flex-wrap">
-          <Badge label="AI PATROL REPORTS" className="bg-brand-50" textClassName="text-brand-700" />
-          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
+          <Badge label="AI PATROL REPORTS" className="bg-brand-50 dark:bg-brand-900/40" textClassName="text-brand-700 dark:text-brand-300" />
+          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100 dark:bg-amber-900/40" textClassName="text-amber-700 dark:text-amber-300" dotClassName="bg-amber-500" />}
         </Row>
-        <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Patrol Reports</Text>
-        <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
+        <Text className="text-[22px] font-extrabold text-slate-900 dark:text-slate-100 mt-3">Patrol Reports</Text>
+        <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-[18px]">
           One report is generated automatically for every completed patrol, summarizing the AI analysis of every
           photo captured along the way.
         </Text>
@@ -104,10 +104,10 @@ export default function ReportsScreen() {
         {mission && mission.state && mission.state !== 'completed' && (
           <Card className="mt-4">
             <SectionTitle>PATROL IN PROGRESS</SectionTitle>
-            <Text className="text-xs font-bold text-slate-700 mt-2">
+            <Text className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-2">
               {mission.missionId} • {mission.state} • waypoint {mission.currentWaypoint ?? 0}/{mission.waypoints.length}
             </Text>
-            <Text className="text-[11px] text-slate-500 mt-1">A report will appear here automatically once this patrol finishes.</Text>
+            <Text className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">A report will appear here automatically once this patrol finishes.</Text>
           </Card>
         )}
 
@@ -125,17 +125,17 @@ export default function ReportsScreen() {
               <Text className="text-xs text-slate-400 py-8 text-center">No reports yet. Deploy and complete a patrol to generate one.</Text>
             ) : (
               reports.map((r, i) => (
-                <View key={r.id} className={`py-3 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
+                <View key={r.id} className={`py-3 ${i > 0 ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}>
                   <Row className="items-start">
-                    <IconBox className="bg-brand-100" size={38}>
+                    <IconBox className="bg-brand-100 dark:bg-brand-900/50" size={38}>
                       <Feather name="file-text" size={17} color={colors.emerald600} />
                     </IconBox>
                     <View className="flex-1 ml-3">
                       <Text className="text-[10px] font-extrabold text-slate-400">
                         {r.trigger_type === 'auto' ? 'AUTO • PATROL COMPLETE' : 'MANUAL'} • {fmtDate(r.created_at)}
                       </Text>
-                      <Text className="text-xs font-extrabold text-slate-800 mt-0.5">{r.summary}</Text>
-                      <Text className="text-[10px] text-slate-500 mt-0.5">
+                      <Text className="text-xs font-extrabold text-slate-800 dark:text-slate-100 mt-0.5">{r.summary}</Text>
+                      <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                         {r.report.imageCount} images • Blocks: {r.report.blocks.join(', ') || '—'}
                       </Text>
                     </View>
@@ -149,8 +149,8 @@ export default function ReportsScreen() {
                     <View className="mt-2 ml-[50px] gap-1">
                       {r.report.averages.slice(0, 5).map((a) => (
                         <Row key={a.className} className="justify-between">
-                          <Text className="text-[11px] text-slate-600">{a.className.replace(/_+/g, ' ')}</Text>
-                          <Text className="text-[11px] font-extrabold text-slate-700">{(a.averageConfidence * 100).toFixed(0)}% avg • {a.samples}x</Text>
+                          <Text className="text-[11px] text-slate-600 dark:text-slate-300">{a.className.replace(/_+/g, ' ')}</Text>
+                          <Text className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200">{(a.averageConfidence * 100).toFixed(0)}% avg • {a.samples}x</Text>
                         </Row>
                       ))}
                     </View>

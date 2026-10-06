@@ -14,7 +14,7 @@ export default function ActionFeedback({
   return (
     <Text
       className={`text-[11px] font-bold mt-2 ${
-        result.success ? 'text-brand-700' : 'text-rose-600'
+        result.success ? 'text-brand-700 dark:text-brand-300' : 'text-rose-600 dark:text-rose-400'
       } ${className}`}
     >
       {result.success
