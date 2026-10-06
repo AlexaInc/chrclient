@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import { Card, Page, Row, SectionTitle, Badge } from '../components/ui';
@@ -12,6 +12,7 @@ import LiveMap, { MapPhoneFix } from '../map/LiveMap';
 import { LeafletPointIn } from '../map/leafletHtml';
 import { PhonePermission, PhoneFix, requestPhoneLocationPermission, stopPhoneLocation, watchPhoneLocation } from '../scripts/PhoneLocation';
 import { readPref, writePref } from '../state/deviceStorage';
+import { usePreferences } from '../state/Preferences';
 
 /**
  * GPS mapping, three ways to put a point on the map:
@@ -29,6 +30,15 @@ import { readPref, writePref } from '../state/deviceStorage';
 const plants = ['tomato', 'potato', 'chilli', 'apple', 'blueberry', 'cauliflower', 'lemon', 'tea'];
 const STOP_POINT_KEY = 'chrclient.mapping.stopPoints';
 const AUTO_CAPTURE_METRES = 10;
+/**
+ * A corner marked from a fix this rough is worth a re-do: 25 m is about the
+ * width of two crop rows. Rough fixes are skipped by the automatic capture and
+ * refused by the manual button instead of quietly poisoning the field map
+ * (the map's phone marker turns amber >15 m and red >30 m).
+ */
+const MAX_CAPTURE_ACCURACY_M = 25;
+/** The walked path is drawn on the map; drop samples closer than this. */
+const TRACE_MIN_METRES = 3;
 
 type CaptureSource = 'robot' | 'phone' | 'tap';
 type CaptureTarget = 'block' | 'boundary' | 'base' | 'stop';
@@ -75,6 +85,7 @@ export default function MappingScreen() {
   const [map, setMap] = useState<FieldMapMessage>({ name: 'Field A', boundary: [], blocks: [] });
   const [blockPoints, setBlockPoints] = useState<[number, number][]>([]);
   const [blockName, setBlockName] = useState('');
+  const { mapProvider, setMapProvider } = usePreferences();
   const [plant, setPlant] = useState('tomato');
   const [stopPoints, setStopPoints] = useState<StopPoint[]>([]);
   const [stopLibrary, setStopLibrary] = useState<Record<string, StopPoint[]>>(() => readStopLibrary());
@@ -86,6 +97,16 @@ export default function MappingScreen() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [walking, setWalking] = useState(false);
   const [autoCapture, setAutoCapture] = useState(false);
+  /** the path already walked with the phone — drawn as a dashed line on the map */
+  const [walkTrace, setWalkTrace] = useState<[number, number][]>([]);
+  /** bumped by "my location" so the map re-centres even without a value change */
+  const [focusToken, setFocusToken] = useState(0);
+  /**
+   * The mapping map lives inside the page scroller, and on a phone the scroller
+   * can swallow a drag that was meant for the map. Full screen puts the same map
+   * (same props, same state) in a Modal, where every gesture reaches it.
+   */
+  const [mapFullScreen, setMapFullScreen] = useState(false);
   const lastAutoRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   useEffect(() => {
@@ -101,6 +122,10 @@ export default function MappingScreen() {
       return { latitude: location.latitude, longitude: location.longitude, accuracy: null, at: Date.now() };
     return null;
   }, [source, phoneFix, location]);
+
+  /** true when the fix in hand is too rough to mark a corner with */
+  const liveAccuracy = source === 'phone' ? phoneFix?.accuracy ?? null : null;
+  const liveTooRough = liveAccuracy != null && liveAccuracy > MAX_CAPTURE_ACCURACY_M;
 
   const mapPoints: LeafletPointIn[] = useMemo(() => {
     const out: LeafletPointIn[] = [];
@@ -144,6 +169,15 @@ export default function MappingScreen() {
       );
       return;
     }
+    if (liveTooRough) {
+      Alert.alert(
+        'Location is not accurate enough yet',
+        `This fix is ±${Math.round(liveAccuracy ?? 0)} m — a corner marked with it can be one or two crop rows out.\n\n` +
+          'Step into the open, wait for the ± figure to drop below ' +
+          `${MAX_CAPTURE_ACCURACY_M} m, then capture. (The map marker turns green when the fix is good.)`,
+      );
+      return;
+    }
     acceptPoint(liveFix.latitude, liveFix.longitude, source);
   };
 
@@ -160,12 +194,22 @@ export default function MappingScreen() {
       return;
     }
     setPhoneError(null);
+    setWalkTrace([]);
     setWalking(true);
     setSource('phone');
     watchPhoneLocation(
       (fix) => {
         setPhoneFix(fix);
+        // Trace the walk so the operator can see on the map where they have
+        // been (and that the map is following them).
+        setWalkTrace((line) => {
+          const lastPt = line[line.length - 1];
+          if (lastPt && distanceM({ latitude: lastPt[0], longitude: lastPt[1] }, fix) < TRACE_MIN_METRES) return line;
+          return [...line.slice(-400), [fix.latitude, fix.longitude] as [number, number]];
+        });
         if (!autoCapture || target === 'base' || target === 'stop') return;
+        // A rough fix must not plant a corner 20 m into the next row.
+        if (fix.accuracy != null && fix.accuracy > MAX_CAPTURE_ACCURACY_M) return;
         const last = lastAutoRef.current;
         if (!last || distanceM(last, fix) >= AUTO_CAPTURE_METRES) {
           lastAutoRef.current = { latitude: fix.latitude, longitude: fix.longitude };
@@ -282,6 +326,29 @@ export default function MappingScreen() {
 
   const phoneMarker: MapPhoneFix | null = phoneFix ? { ...phoneFix, active: walking } : null;
 
+  /**
+   * One map, used in the card and (full screen) in the modal below. Same props
+   * both times, so tapping a corner in full screen marks exactly the same point.
+   */
+  const mapNode = (
+    <LiveMap
+      location={location}
+      trail={[]}
+      height={300}
+      points={mapPoints}
+      interactive
+      onTap={(latitude, longitude) => acceptPoint(latitude, longitude, 'map tap')}
+      phone={phoneMarker}
+      phoneTrail={walkTrace}
+      provider={mapProvider}
+      onProviderChange={setMapProvider}
+      /* Walking the block? The map follows the phone, so the operator never has
+         to drag it back to where they are standing. */
+      focus={walking ? 'phone' : 'rover'}
+      focusToken={focusToken}
+    />
+  );
+
   return (
     <View className="flex-1 bg-surface dark:bg-slate-950">
       <Header title="GPS Mapping Mode" />
@@ -307,18 +374,30 @@ export default function MappingScreen() {
               tap the map to mark a {TARGETS.find((t) => t.key === target)?.label.toLowerCase()}
             </Text>
           </Row>
-          <View className="mt-3">
-            <LiveMap
-              location={location}
-              trail={[]}
-              height={300}
-              points={mapPoints}
-              interactive
-              onTap={(latitude, longitude) => acceptPoint(latitude, longitude, 'map tap')}
-              phone={phoneMarker}
-            />
-          </View>
-          <Row className="justify-between mt-2.5">
+          <View className="mt-3">{mapNode}</View>
+          <Row className="justify-between items-center mt-2.5">
+            <Row className="gap-2">
+              <TouchableOpacity
+                onPress={() => setFocusToken((n) => n + 1)}
+                activeOpacity={0.85}
+                className="flex-row items-center bg-brand-50 dark:bg-brand-900/40 border border-brand-200 dark:border-brand-800 rounded-lg px-2.5 py-1.5"
+              >
+                <Feather name="crosshair" size={13} color={colors.emerald600} />
+                <Text className="text-[10px] font-extrabold text-brand-700 dark:text-brand-300 ml-1.5">
+                  CENTRE ON {walking ? 'ME' : 'ROBOT'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMapFullScreen(true)}
+                activeOpacity={0.85}
+                className="flex-row items-center bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5"
+              >
+                <Feather name="maximize-2" size={13} color={colors.slate600} />
+                <Text className="text-[10px] font-extrabold text-slate-700 dark:text-slate-200 ml-1.5">
+                  FULL SCREEN
+                </Text>
+              </TouchableOpacity>
+            </Row>
             <Text className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
               {mapPoints.length} point{mapPoints.length === 1 ? '' : 's'} captured • {stopPoints.length} stop point
               {stopPoints.length === 1 ? '' : 's'} in this block
@@ -328,6 +407,31 @@ export default function MappingScreen() {
             </Text>
           </Row>
         </Card>
+
+        {/* Full screen map — pinch, drag and zoom without the page scroller
+            fighting the map (phones). Same map as the card above. */}
+        <Modal visible={mapFullScreen} animationType="slide" onRequestClose={() => setMapFullScreen(false)}>
+          <View className="flex-1 bg-surface dark:bg-slate-950">
+            <Row className="justify-between items-center px-4 pt-4 pb-2">
+              <Text className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                MAPPING MAP — {TARGETS.find((t) => t.key === target)?.label.toUpperCase()}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setMapFullScreen(false)}
+                activeOpacity={0.85}
+                className="flex-row items-center bg-slate-100 dark:bg-slate-800 rounded-lg px-3 py-2"
+              >
+                <Feather name="minimize-2" size={14} color={colors.slate600} />
+                <Text className="text-[10px] font-extrabold text-slate-700 dark:text-slate-200 ml-1.5">CLOSE</Text>
+              </TouchableOpacity>
+            </Row>
+            <Text className="text-[10px] text-slate-500 dark:text-slate-400 px-4 pb-2">
+              Pinch or use + / − to zoom, drag to move, ◎ for your position, ⤢ to frame everything. Tap to mark a{' '}
+              {TARGETS.find((t) => t.key === target)?.label.toLowerCase()}.
+            </Text>
+            <View style={{ flex: 1 }}>{mapNode}</View>
+          </View>
+        </Modal>
 
         {/* Capture controls */}
         <Card className="mt-4">
@@ -397,7 +501,13 @@ export default function MappingScreen() {
               <Row className="justify-between">
                 <Text className="text-[11px] font-extrabold text-blue-700 dark:text-blue-300">WALKING WITH THE PHONE</Text>
                 <Text className="text-[10px] font-bold text-blue-700 dark:text-blue-300">
-                  {phoneFix ? `±${(phoneFix.accuracy ?? 0).toFixed(0)} m` : 'waiting for a fix…'}
+                  {phoneFix
+                    ? phoneFix.accuracy == null
+                      ? 'accuracy unknown'
+                      : liveTooRough
+                        ? `±${phoneFix.accuracy.toFixed(0)} m — too rough, wait`
+                        : `±${phoneFix.accuracy.toFixed(0)} m`
+                    : 'waiting for a fix…'}
                 </Text>
               </Row>
               <Text className="text-[10px] text-blue-700 dark:text-blue-300 mt-1 leading-4">

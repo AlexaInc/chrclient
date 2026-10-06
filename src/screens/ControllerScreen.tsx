@@ -13,6 +13,7 @@ import ActionFeedback from '../components/ActionFeedback';
 import { DriveDirection } from '../types/actions';
 import LiveMap, { DEFAULT_FIELD_LOCATION } from '../map/LiveMap';
 import { describeAvoidState, isAvoiding, isStuck } from '../scripts/robotMotion';
+import { usePreferences } from '../state/Preferences';
 
 const REPEAT_MS = 250; // resend rate while a direction is held
 
@@ -32,6 +33,7 @@ const SENSOR_LABELS = ['Front', 'Left ±', 'Right ±'];
 
 export default function ControllerScreen() {
   const isDesktop = useIsDesktop();
+  const { mapProvider, setMapProvider } = usePreferences();
   const { status, ultrasonic, currentBlock, fieldMap, isDemo, robotOnline, location, trail } = useRealtime();
 
   /**
@@ -195,7 +197,14 @@ export default function ControllerScreen() {
             />
           </Row>
           <View className="mt-3">
-            <LiveMap location={mapLocation} trail={trail} height={isDesktop ? 300 : 220} isDefault={!location} />
+            <LiveMap
+              location={mapLocation}
+              trail={trail}
+              height={isDesktop ? 300 : 220}
+              isDefault={!location}
+              provider={mapProvider}
+              onProviderChange={setMapProvider}
+            />
           </View>
           <Row className="justify-between mt-2.5">
             <Text className="text-xs font-extrabold text-slate-800 dark:text-slate-100">

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'nativewind';
 import { readPref, writePref } from './deviceStorage';
+import { DEFAULT_MAP_PROVIDER, MapProvider, isMapProvider } from '../map/leafletHtml';
 
 /**
  * Small set of display preferences that live on the device (not fleet settings).
@@ -10,6 +11,9 @@ import { readPref, writePref } from './deviceStorage';
  *              for the dots to be a switch, not the other way round.
  *  darkMode  — app-wide dark theme, toggled from Settings or the side menu and
  *              remembered on this device.
+ *  mapProvider — which tiles every live map draws. SATELLITE by default, because
+ *              the operator maps crop blocks: the road map was a cartoon next to
+ *              the imagery. Changeable from Settings and from the map itself.
  */
 export interface Preferences {
   graphDots: boolean;
@@ -18,10 +22,13 @@ export interface Preferences {
   darkMode: boolean;
   setDarkMode: (value: boolean) => void;
   toggleDarkMode: () => void;
+  mapProvider: MapProvider;
+  setMapProvider: (value: MapProvider) => void;
 }
 
 const KEY_GRAPH_DOTS = 'chrclient.prefs.graphDots';
 const KEY_DARK_MODE = 'chrclient.prefs.darkMode';
+const KEY_MAP_PROVIDER = 'chrclient.prefs.mapProvider';
 
 const PreferencesContext = createContext<Preferences | undefined>(undefined);
 
@@ -35,6 +42,10 @@ function boolFromStorage(key: string, fallback: boolean): boolean {
 export function PreferencesProvider({ children }: { children: React.ReactNode }) {
   const [graphDots, setGraphDotsState] = useState<boolean>(() => boolFromStorage(KEY_GRAPH_DOTS, false));
   const [darkMode, setDarkModeState] = useState<boolean>(() => boolFromStorage(KEY_DARK_MODE, false));
+  const [mapProvider, setMapProviderState] = useState<MapProvider>(() => {
+    const saved = readPref(KEY_MAP_PROVIDER);
+    return isMapProvider(saved) ? saved : DEFAULT_MAP_PROVIDER;
+  });
   const colorScheme = useColorScheme();
 
   // Push the choice into NativeWind so every `dark:` class in the app follows it.
@@ -61,9 +72,18 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
 
   const toggleDarkMode = useCallback(() => setDarkMode(!darkMode), [darkMode, setDarkMode]);
 
+  const setMapProvider = useCallback((value: MapProvider) => {
+    setMapProviderState(isMapProvider(value) ? value : DEFAULT_MAP_PROVIDER);
+    writePref(KEY_MAP_PROVIDER, value);
+  }, []);
+
   const value = useMemo<Preferences>(
-    () => ({ graphDots, setGraphDots, toggleGraphDots, darkMode, setDarkMode, toggleDarkMode }),
-    [graphDots, setGraphDots, toggleGraphDots, darkMode, setDarkMode, toggleDarkMode]
+    () => ({
+      graphDots, setGraphDots, toggleGraphDots,
+      darkMode, setDarkMode, toggleDarkMode,
+      mapProvider, setMapProvider,
+    }),
+    [graphDots, setGraphDots, toggleGraphDots, darkMode, setDarkMode, toggleDarkMode, mapProvider, setMapProvider]
   );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;

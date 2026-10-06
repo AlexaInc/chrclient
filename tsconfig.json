@@ -6,8 +6,9 @@
   "exclude": [
     "node_modules",
     "dist",
-    // The Task-7 verification script runs under tsx (node, not React Native)
-    // and uses node built-ins, so it is not part of the app typecheck.
-    "chrclient-verify-task7.ts"
+    // The verification scripts run under tsx (node, not React Native) and use
+    // node built-ins, so they are not part of the app typecheck.
+    "chrclient-verify-task7.ts",
+    "chrclient-verify-map.ts"
   ]
 }

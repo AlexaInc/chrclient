@@ -111,9 +111,10 @@ async function main() {
     has("src/scripts/Commands.ts", "pumpId?: string, blockId?: string", "the threshold command carries the well it belongs to");
 
     // (6) GPS fallback position
-    has("src/map/LiveMap.tsx", "7.489087449264883", "the default field position is the operator's coordinates");
+    has("src/map/leafletHtml.ts", "7.489087449264883", "the default field position is the operator's coordinates");
+    has("src/map/LiveMap.tsx", "DEFAULT_FIELD_POSITION", "the native map uses that default");
     has("src/screens/LocationScreen.tsx", "NO GPS FIX • DEFAULT POSITION", "the location screen says when it is showing the default");
-    has("src/map/LiveMap.web.tsx", "7.489087449264883", "the web map uses the same default position");
+    has("src/map/LiveMap.web.tsx", "DEFAULT_FIELD_POSITION", "the web map uses the same default position");
 
     // (7) graphs: dots off by default + toggle
     has("src/state/Preferences.tsx", "boolFromStorage(KEY_GRAPH_DOTS, false)", "graph dots default to OFF");

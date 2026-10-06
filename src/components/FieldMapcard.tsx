@@ -3,10 +3,13 @@ import { Text, View } from 'react-native';
 import LiveMap, { DEFAULT_FIELD_LOCATION } from '../map/LiveMap';
 import { useRealtime } from '../realtime/RealtimeContext';
 import { Card, GridItem, Row, SectionTitle, useIsDesktop } from './ui';
+import { usePreferencesOptional } from '../state/Preferences';
 
 
 export default function FieldMapCard() {
     const isDesktop = useIsDesktop();
+    // Optional: this card can render outside the provider (it is also used in a modal)
+    const prefs = usePreferencesOptional();
     const { location, trail, isDemo, fieldMap, currentBlock } = useRealtime();
     // No GPS fix (unplugged module, no satellites, dead link) still shows the
     // field's own position rather than an empty card or a random city centre.
@@ -30,7 +33,14 @@ export default function FieldMapCard() {
                     </Row>
 
                     <View className="mt-3">
-                        <LiveMap location={shownLocation} trail={trail} height={192} isDefault={!location} />
+                        <LiveMap
+                            location={shownLocation}
+                            trail={trail}
+                            height={192}
+                            isDefault={!location}
+                            provider={prefs?.mapProvider}
+                            onProviderChange={prefs?.setMapProvider}
+                        />
                     </View>
 
                     <Row className="mt-2.5 justify-between">

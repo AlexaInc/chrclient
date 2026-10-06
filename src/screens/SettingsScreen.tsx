@@ -28,6 +28,7 @@ import {
   WhatsAppStatusDto,
 } from '../scripts/Api';
 import { FleetConfig } from '../types/actions';
+import { MAP_PROVIDERS } from '../map/leafletHtml';
 import { describeAvoidState } from '../scripts/robotMotion';
 
 const DEFAULT_CONFIG: FleetConfig = {
@@ -784,7 +785,7 @@ const UPDATE_STATE_TEXT: Record<string, { label: string; className: string; text
  * says so here and offers the release page instead.
  */
 function DisplayAndAppCard() {
-  const { darkMode, setDarkMode, graphDots, setGraphDots } = usePreferences();
+  const { darkMode, setDarkMode, graphDots, setGraphDots, mapProvider, setMapProvider } = usePreferences();
   const { currentVersion, status, latest, checkedAt, error, notice, autoUpdate, setAutoUpdate, checkNow, install } = useUpdate();
   const [busy, setBusy] = useState(false);
 
@@ -828,6 +829,42 @@ function DisplayAndAppCard() {
           thumbColor={colors.white}
         />
       </Row>
+
+      {/* Map style — the operator asked for satellite imagery instead of the
+          cartoon road map; the choice is remembered and used by every map. */}
+      <View className="mt-4 border border-slate-200 dark:border-slate-700 rounded-xl p-3">
+        <Text className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200">MAP STYLE</Text>
+        <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-4">
+          Which tiles the live maps draw. SATELLITE is the default: imagery shows the crop rows and the plot edges,
+          which a road map cannot. STREETS is OpenStreetMap, TERRAIN adds contour lines. You can also switch this from
+          the buttons on the map itself — all four maps follow this setting.
+        </Text>
+        <Row className="gap-2 mt-2.5 flex-wrap">
+          {MAP_PROVIDERS.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              onPress={() => setMapProvider(p.id)}
+              activeOpacity={0.85}
+              className={`px-3.5 py-2 rounded-xl border ${
+                mapProvider === p.id
+                  ? 'bg-brand-600 border-brand-600'
+                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900'
+              }`}
+            >
+              <Text
+                className={`text-[11px] font-extrabold ${
+                  mapProvider === p.id ? 'text-white' : 'text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </Row>
+        <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5">
+          {MAP_PROVIDERS.find((p) => p.id === mapProvider)?.hint ?? ''}
+        </Text>
+      </View>
 
       {/* Self-update */}
       <View className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 mt-4">

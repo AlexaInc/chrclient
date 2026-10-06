@@ -7,6 +7,7 @@ import { colors } from '../theme';
 import LiveMap, { DEFAULT_FIELD_LOCATION } from '../map/LiveMap';
 import { useRealtime } from '../realtime/RealtimeContext';
 import BlockMapBuilder from '../map/BlockMapBuilder';
+import { usePreferences } from '../state/Preferences';
 
 function timeAgo(ts: number | null): string {
   if (!ts) return '—';
@@ -18,6 +19,7 @@ function timeAgo(ts: number | null): string {
 
 export default function LocationScreen() {
   const isDesktop = useIsDesktop();
+  const { mapProvider, setMapProvider } = usePreferences();
   const { location, trail, status, isDemo, currentBlock, fieldMap, robotOnline, mission, lastUpdated } = useRealtime();
 
   /**
@@ -101,7 +103,14 @@ export default function LocationScreen() {
           </Text>
 
           <View className="mt-3">
-            <LiveMap location={shownLocation} trail={trail} height={isDesktop ? 380 : 260} isDefault={!hasFix} />
+            <LiveMap
+              location={shownLocation}
+              trail={trail}
+              height={isDesktop ? 380 : 260}
+              isDefault={!hasFix}
+              provider={mapProvider}
+              onProviderChange={setMapProvider}
+            />
             <View className="absolute top-2.5 left-2.5 bg-sidebar/90 rounded-md px-2 py-1" pointerEvents="none">
               <Text className="text-[9px] font-extrabold text-white">
                 {hasFix ? (isDemo ? 'LIVE GPS • DEMO DATA' : 'LIVE GPS') : 'NO GPS FIX • DEFAULT POSITION'}

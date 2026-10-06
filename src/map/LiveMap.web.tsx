@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { View } from 'react-native';
 import { LocationMessage } from '../types/messages';
-import { buildLeafletHtml, LeafletPointIn } from './leafletHtml';
+import {
+  buildLeafletHtml,
+  LeafletPointIn,
+  MapProvider,
+  DEFAULT_MAP_PROVIDER,
+  DEFAULT_FIELD_POSITION,
+  isMapProvider,
+} from './leafletHtml';
+import { mapStatus } from './mapStatus';
 
 export interface MapPhoneFix {
   latitude: number;
@@ -9,6 +17,8 @@ export interface MapPhoneFix {
   accuracy?: number | null;
   active?: boolean;
 }
+
+export type MapFocus = 'rover' | 'phone';
 
 interface Props {
   location: LocationMessage | null;
@@ -23,12 +33,25 @@ interface Props {
   onTap?: (latitude: number, longitude: number) => void;
   /** the phone's own position, shown while the operator walks a block */
   phone?: MapPhoneFix | null;
-  /** keep the map centred on the rover as it moves (default true) */
+  /** the path already walked with the phone (drawn as a dashed line) */
+  phoneTrail?: [number, number][];
+  /** keep the map centred on the followed marker as it moves (default true) */
   follow?: boolean;
+  /** follow the rover or the walking phone (default: the rover) */
+  focus?: MapFocus;
+  /** bump this to re-centre on `focus` even when the value did not change */
+  focusToken?: number;
+  /** which tiles to draw — satellite by default (see leafletHtml.ts) */
+  provider?: MapProvider;
+  /** the user tapped a tile button inside the map */
+  onProviderChange?: (provider: MapProvider) => void;
+  /** override the badge in the corner of the map */
+  statusLabel?: string;
+  statusTone?: 'ok' | 'warn';
 }
 
 /** Same default field position as the native map (see LiveMap.tsx). */
-const FALLBACK = { latitude: 7.489087449264883, longitude: 80.36537714662697 };
+const FALLBACK = DEFAULT_FIELD_POSITION;
 
 /**
  * Web variant of LiveMap: react-native-webview does not run in the browser,
@@ -40,34 +63,65 @@ export default function LiveMap({
   location,
   trail = [],
   height = 220,
+  isDefault,
   points,
   interactive = false,
   onTap,
   phone,
+  phoneTrail = [],
   follow = true,
+  focus = 'rover',
+  focusToken = 0,
+  provider = DEFAULT_MAP_PROVIDER,
+  onProviderChange,
+  statusLabel,
+  statusTone,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const readyRef = useRef(false);
+  /** What the page is already showing, so we never re-create its tile layer. */
+  const pageProviderRef = useRef<MapProvider | null>(null);
 
   const initial = location ?? FALLBACK;
+  const initialProviderRef = useRef<MapProvider>(provider);
   const html = useMemo(
-    () => buildLeafletHtml(initial.latitude, initial.longitude, 17, { interactive }),
+    () => buildLeafletHtml(initial.latitude, initial.longitude, 17, { interactive, provider: initialProviderRef.current }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [interactive],
   );
 
+  const status = mapStatus({ hasFix: !!location, isDefault, statusLabel, statusTone });
+
   const post = (payload: unknown) => iframeRef.current?.contentWindow?.postMessage(payload, '*');
 
-  useEffect(() => {
-    if (!location || !readyRef.current) return;
+  const sendPosition = () => {
+    if (!location) {
+      // No robot link: keep the map on the field position and say so.
+      post({
+        type: 'position',
+        latitude: FALLBACK.latitude,
+        longitude: FALLBACK.longitude,
+        trail: [],
+        status: status.label,
+        statusTone: status.tone,
+      });
+      return;
+    }
     post({
       type: 'position',
       latitude: location.latitude,
       longitude: location.longitude,
       trail: trail.map((p) => [p.latitude, p.longitude]),
+      status: status.label,
+      statusTone: status.tone,
     });
+  };
+
+  useEffect(() => {
+    if (!readyRef.current) return;
+    sendPosition();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location, trail]);
+  }, [location, trail, status.label, status.tone]);
 
   useEffect(() => {
     if (!readyRef.current) return;
@@ -81,13 +135,30 @@ export default function LiveMap({
 
   useEffect(() => {
     if (!readyRef.current) return;
+    post({ type: 'trace', points: phoneTrail });
+  }, [phoneTrail]);
+
+  useEffect(() => {
+    if (!readyRef.current) return;
     post({ type: 'follow', enabled: follow });
   }, [follow]);
 
-  // A tap inside the iframe arrives as a window message; only trust messages
-  // that really come from this frame.
+  // Centre on the rover or on the walker (see the native twin).
   useEffect(() => {
-    if (!interactive || !onTap) return;
+    if (!readyRef.current) return;
+    post({ type: 'focus', target: focus });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, focusToken]);
+
+  useEffect(() => {
+    if (!readyRef.current) return;
+    if (pageProviderRef.current === provider) return;
+    pageProviderRef.current = provider;
+    post({ type: 'provider', id: provider });
+  }, [provider]);
+
+  // Messages from the frame: a tap (manual point marking) and the tile button.
+  useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
       let data: any = event.data;
@@ -98,24 +169,25 @@ export default function LiveMap({
           return;
         }
       }
-      if (data?.type === 'tap') onTap(data.latitude, data.longitude);
+      if (data?.type === 'tap' && interactive && onTap) onTap(data.latitude, data.longitude);
+      if (data?.type === 'provider' && isMapProvider(data.id)) {
+        pageProviderRef.current = data.id;
+        onProviderChange?.(data.id);
+      }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [interactive, onTap]);
+  }, [interactive, onTap, onProviderChange]);
 
   const onReady = () => {
     readyRef.current = true;
-    if (location) {
-      post({
-        type: 'position',
-        latitude: location.latitude,
-        longitude: location.longitude,
-        trail: trail.map((p) => [p.latitude, p.longitude]),
-      });
-    }
+    pageProviderRef.current = provider;
+    sendPosition();
     post({ type: 'points', points: points ?? [] });
+    post({ type: 'trace', points: phoneTrail });
     if (phone) post({ type: 'phone', ...phone, active: phone.active !== false });
+    post({ type: 'provider', id: provider });
+    if (focus !== 'rover') post({ type: 'focus', target: focus });
   };
 
   return (
@@ -134,4 +206,7 @@ export default function LiveMap({
   );
 }
 
-export type { LeafletPointIn };
+export type { LeafletPointIn, MapProvider };
+export { DEFAULT_FIELD_POSITION, DEFAULT_MAP_PROVIDER, isMapProvider };
+/** Kept for the screens that already import it (Location, Controller, FieldMapcard). */
+export const DEFAULT_FIELD_LOCATION = DEFAULT_FIELD_POSITION;
