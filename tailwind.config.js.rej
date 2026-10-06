@@ -1,0 +1,10 @@
+diff a/tailwind.config.js b/tailwind.config.js	(rejected hunks)
+@@ -1,5 +1,8 @@
+ /** @type {import('tailwindcss').Config} */
+ module.exports = {
++  // dark mode is driven by the in-app switch (Settings / side menu), not by
++  // the OS: the operator flips it inside the app and it is remembered on the device
++  darkMode: 'class',
+   content: ['./App.tsx', './src/**/*.{js,jsx,ts,tsx}'],
+   presets: [require('nativewind/preset')],
+   theme: {

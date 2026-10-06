@@ -1,0 +1,89 @@
+diff a/src/screens/AnalyticsScreen.tsx b/src/screens/AnalyticsScreen.tsx	(rejected hunks)
+@@ -4,7 +4,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+ import Header from '../components/Header';
+ import { Card, SectionTitle, Badge, Row, Page } from '../components/ui';
+ import KpiRail from '../components/KpiRail';
+-import { BarChart, LineChart, AutoWidth } from '../components/charts';
++import { BarChart, LineChart, AutoWidth, GraphDotsToggle } from '../components/charts';
+ import { colors } from '../theme';
+ import FilterTabs from '../components/FilterTabs';
+ import { useAuth } from '../auth/AuthContext';
+@@ -65,7 +65,7 @@ export default function AnalyticsScreen() {
+       value: avgHumidity != null ? `${avgHumidity.toFixed(0)}%` : '—',
+       sub: 'From onboard sensor',
+       note: `Window: ${RANGES[range]}`,
+-      iconBg: 'bg-blue-100',
++      iconBg: 'bg-blue-100 dark:bg-blue-900/40',
+       icon: <Feather name="droplet" size={18} color={colors.blue600} />,
+     },
+     {
+@@ -81,7 +81,7 @@ export default function AnalyticsScreen() {
+       value: avgMoisture != null ? `${avgMoisture.toFixed(0)}%` : '—',
+       sub: 'From irrigation pump sensor (not the robot)',
+       note: `Window: ${RANGES[range]}`,
+-      iconBg: 'bg-brand-100',
++      iconBg: 'bg-brand-100 dark:bg-brand-900/50',
+       icon: <MaterialCommunityIcons name="water-outline" size={20} color={colors.emerald600} />,
+     },
+   ];
+@@ -98,15 +98,15 @@ export default function AnalyticsScreen() {
+   }, [sensorRows]);
+ 
+   return (
+-    <View className="flex-1 bg-surface">
++    <View className="flex-1 bg-surface dark:bg-slate-950">
+       <Header title="Analytics" />
+       <Page>
+         <Row className="gap-2 flex-wrap">
+-          <Badge label="SENSOR HISTORY" className="bg-brand-50" textClassName="text-brand-700" />
+-          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100" textClassName="text-amber-700" dotClassName="bg-amber-500" />}
++          <Badge label="SENSOR HISTORY" className="bg-brand-50 dark:bg-brand-900/40" textClassName="text-brand-700 dark:text-brand-300" />
++          {isDemo && <Badge label="DEMO DATA" className="bg-amber-100 dark:bg-amber-900/40" textClassName="text-amber-700 dark:text-amber-300" dotClassName="bg-amber-500" />}
+         </Row>
+-        <Text className="text-[22px] font-extrabold text-slate-900 mt-3">Analytics</Text>
+-        <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
++        <Text className="text-[22px] font-extrabold text-slate-900 dark:text-slate-100 mt-3">Analytics</Text>
++        <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-[18px]">
+           Historical trends from the robot's real sensors (temperature, raindrop) and the irrigation pump's soil
+           moisture sensor.
+         </Text>
+@@ -125,10 +125,13 @@ export default function AnalyticsScreen() {
+             {loading && <Text className="text-xs text-slate-400 mt-2">Loading history…</Text>}
+ 
+             <Card className="mt-4">
+-              <SectionTitle>TEMPERATURE & HUMIDITY</SectionTitle>
++              <Row className="justify-between">
++                <SectionTitle>TEMPERATURE & HUMIDITY</SectionTitle>
++                <GraphDotsToggle />
++              </Row>
+               <Row className="mt-3 gap-4 flex-wrap">
+-                <Row><View className="w-2.5 h-2.5 rounded-full bg-orange-500 mr-1.5" /><Text className="text-[11px] font-bold text-slate-600">Temperature (°C)</Text></Row>
+-                <Row><View className="w-2.5 h-2.5 rounded-full bg-blue-500 mr-1.5" /><Text className="text-[11px] font-bold text-slate-600">Humidity (%)</Text></Row>
++                <Row><View className="w-2.5 h-2.5 rounded-full bg-orange-500 mr-1.5" /><Text className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Temperature (°C)</Text></Row>
++                <Row><View className="w-2.5 h-2.5 rounded-full bg-blue-500 mr-1.5" /><Text className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Humidity (%)</Text></Row>
+               </Row>
+               <View className="mt-2">
+                 {chronological.length < 2 ? (
+@@ -152,8 +155,11 @@ export default function AnalyticsScreen() {
+             </Card>
+ 
+             <Card className="mt-4">
+-              <SectionTitle>SOIL MOISTURE (IRRIGATION PUMP SENSOR)</SectionTitle>
+-              <Text className="text-[10px] text-slate-500 mt-1">
++              <Row className="justify-between">
++                <SectionTitle>SOIL MOISTURE (IRRIGATION PUMP SENSOR)</SectionTitle>
++                <GraphDotsToggle />
++              </Row>
++              <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                 This reading comes from the water pump's own soil-moisture sensor — the rover has no such sensor.
+               </Text>
+               <View className="mt-2">
+@@ -176,7 +182,7 @@ export default function AnalyticsScreen() {
+ 
+             <Card className="mt-4">
+               <SectionTitle>PATROL TIME BY BLOCK (READING COUNT)</SectionTitle>
+-              <Text className="text-[10px] text-slate-500 mt-1">
++              <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                 Number of sensor readings recorded while the robot was in each mapped block — a proxy for time spent per block.
+               </Text>
+               <View className="mt-3">

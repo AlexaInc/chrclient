@@ -1,0 +1,35 @@
+diff a/app.json b/app.json	(rejected hunks)
+@@ -5,11 +5,18 @@
+     "version": "1.0.0",
+     "orientation": "portrait",
+     "icon": "./assets/icon.png",
+-    "userInterfaceStyle": "light",
++    "userInterfaceStyle": "automatic",
+     "ios": {
+-      "supportsTablet": true
++      "supportsTablet": true,
++      "infoPlist": {
++        "NSLocationWhenInUseUsageDescription": "AI Crop Robot uses your location while you walk a crop block with the phone, so the block boundary can be mapped without driving the robot."
++      }
+     },
+     "android": {
++      "permissions": [
++        "ACCESS_COARSE_LOCATION",
++        "ACCESS_FINE_LOCATION"
++      ],
+       "adaptiveIcon": {
+         "backgroundColor": "#E6F4FE",
+         "foregroundImage": "./assets/android-icon-foreground.png",
+@@ -25,6 +32,12 @@
+     "backgroundColor": "#043622",
+     "plugins": [
+       "react-native-quick-crypto",
++      [
++        "expo-location",
++        {
++          "locationWhenInUsePermission": "AI Crop Robot uses your location while you walk a crop block with the phone, so the block boundary can be mapped without driving the robot."
++        }
++      ],
+       [
+         "expo-splash-screen",
+         {

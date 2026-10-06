@@ -904,3 +904,146 @@ function DisplayAndAppCard() {
     </Card>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Display, theme and app updates                                      */
+/* ------------------------------------------------------------------ */
+
+const UPDATE_STATE_TEXT: Record<string, { label: string; className: string; textClassName: string }> = {
+  idle: { label: 'NOT CHECKED YET', className: 'bg-slate-100 dark:bg-slate-800', textClassName: 'text-slate-500 dark:text-slate-400' },
+  checking: { label: 'CHECKING…', className: 'bg-amber-100 dark:bg-amber-900/40', textClassName: 'text-amber-700 dark:text-amber-300' },
+  'up-to-date': { label: 'UP TO DATE', className: 'bg-brand-100 dark:bg-brand-900/50', textClassName: 'text-brand-700 dark:text-brand-300' },
+  available: { label: 'UPDATE AVAILABLE', className: 'bg-amber-100 dark:bg-amber-900/40', textClassName: 'text-amber-700 dark:text-amber-300' },
+  installing: { label: 'INSTALLING…', className: 'bg-blue-100 dark:bg-blue-900/40', textClassName: 'text-blue-700' },
+  blocked: { label: 'NEEDS A PERMISSION', className: 'bg-rose-100 dark:bg-rose-900/40', textClassName: 'text-rose-700 dark:text-rose-400' },
+  error: { label: 'CHECK FAILED', className: 'bg-rose-100 dark:bg-rose-900/40', textClassName: 'text-rose-700 dark:text-rose-400' },
+};
+
+/**
+ * Device-level switches (dark mode, graph dots) plus the self-update panel.
+ *
+ * The self-update panel exists so the operator can see *why* a phone did or did
+ * not update itself: every platform that cannot install a new release on its own
+ * says so here and offers the release page instead.
+ */
+function DisplayAndAppCard() {
+  const { darkMode, setDarkMode, graphDots, setGraphDots } = usePreferences();
+  const { currentVersion, status, latest, checkedAt, error, notice, autoUpdate, setAutoUpdate, checkNow, install } = useUpdate();
+  const [busy, setBusy] = useState(false);
+
+  const badge = UPDATE_STATE_TEXT[status] ?? UPDATE_STATE_TEXT.idle;
+  const newer = !!latest && latest.version !== currentVersion;
+
+  return (
+    <Card className="mt-4">
+      <SectionTitle>DISPLAY & APP</SectionTitle>
+      <Text className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-[17px]">
+        These switches are stored on this device only — they change how the app looks, not how the robot behaves.
+      </Text>
+
+      <Row className="justify-between mt-3">
+        <View className="flex-1 pr-3">
+          <Text className="text-[13px] font-extrabold text-slate-800 dark:text-slate-100">Dark mode</Text>
+          <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-4">
+            Dark theme for night work and for phones mounted on the rover — easier on the eyes and on the battery.
+          </Text>
+        </View>
+        <Switch
+          value={darkMode}
+          onValueChange={setDarkMode}
+          trackColor={{ false: colors.slate300, true: colors.emerald500 }}
+          thumbColor={colors.white}
+        />
+      </Row>
+
+      <Row className="justify-between mt-3">
+        <View className="flex-1 pr-3">
+          <Text className="text-[13px] font-extrabold text-slate-800 dark:text-slate-100">Show dots on graphs</Text>
+          <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-4">
+            OFF (default): the graphs draw a smooth line through the readings. ON: every single sample is marked, which
+            makes it easy to see how many readings a curve is really made of.
+          </Text>
+        </View>
+        <Switch
+          value={graphDots}
+          onValueChange={setGraphDots}
+          trackColor={{ false: colors.slate300, true: colors.emerald500 }}
+          thumbColor={colors.white}
+        />
+      </Row>
+
+      {/* Self-update */}
+      <View className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 mt-4">
+        <Row className="justify-between">
+          <Text className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200">SOFTWARE UPDATE</Text>
+          <Badge label={badge.label} className={badge.className} textClassName={badge.textClassName} />
+        </Row>
+        <Row className="justify-between mt-2">
+          <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Installed version</Text>
+          <Text className="text-[12px] font-extrabold text-slate-800 dark:text-slate-100">v{currentVersion}</Text>
+        </Row>
+        <Row className="justify-between mt-1.5">
+          <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Newest release</Text>
+          <Text className="text-[12px] font-extrabold text-slate-800 dark:text-slate-100">
+            {latest ? `${latest.tag}${newer ? '' : ' (current)'}` : '—'}
+          </Text>
+        </Row>
+        <Row className="justify-between mt-1.5">
+          <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Last checked</Text>
+          <Text className="text-[12px] font-extrabold text-slate-800 dark:text-slate-100">{formatWhen(checkedAt)}</Text>
+        </Row>
+
+        {error ? (
+          <Text className="text-[10px] text-rose-600 dark:text-rose-400 mt-1.5">Check failed: {error}</Text>
+        ) : null}
+        {notice ? (
+          <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5 leading-4">{notice}</Text>
+        ) : null}
+
+        <Row className="justify-between mt-3">
+          <View className="flex-1 pr-3">
+            <Text className="text-[12px] font-extrabold text-slate-800 dark:text-slate-100">Update automatically</Text>
+            <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-4">
+              When a new build is published as a GitHub release, an Android phone downloads the new APK by itself and
+              asks you to confirm the install. On iPhone and in a desktop browser no silent install is possible, so the
+              app raises a "new version available" notice instead.
+            </Text>
+          </View>
+          <Switch
+            value={autoUpdate}
+            onValueChange={setAutoUpdate}
+            trackColor={{ false: colors.slate300, true: colors.emerald500 }}
+            thumbColor={colors.white}
+          />
+        </Row>
+
+        <Row className="gap-2 mt-3">
+          <TouchableOpacity
+            onPress={() => { setBusy(true); void checkNow().finally(() => setBusy(false)); }}
+            disabled={busy || status === 'checking'}
+            activeOpacity={0.85}
+            className={`flex-1 border border-brand-300 dark:border-brand-600 bg-white dark:bg-slate-900 rounded-xl py-3 items-center justify-center ${
+              busy ? 'opacity-60' : ''
+            }`}
+          >
+            <Text className="text-[12px] font-extrabold text-brand-700 dark:text-brand-300">
+              {status === 'checking' ? 'Checking…' : 'Check for updates'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => void install()}
+            disabled={!latest || !newer}
+            activeOpacity={0.85}
+            className={`flex-1 bg-brand-600 rounded-xl py-3 items-center justify-center ${
+              !latest || !newer ? 'opacity-50' : ''
+            }`}
+          >
+            <Text className="text-[12px] font-extrabold text-white">
+              {status === 'installing' ? 'Installing…' : 'Update now'}
+            </Text>
+          </TouchableOpacity>
+        </Row>
+      </View>
+    </Card>
+  );
+}

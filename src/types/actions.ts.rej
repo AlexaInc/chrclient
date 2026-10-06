@@ -1,0 +1,29 @@
+diff a/src/types/actions.ts b/src/types/actions.ts	(rejected hunks)
+@@ -73,7 +73,15 @@ export type ControlAction =
+   | { action: 'stop' }               // E-Stop
+   | { action: 'start_patrol' }
+   | { action: 'pause_patrol' }
+-  | { action: 'return_to_base' }
++  /** Drive back to the stored base point. `reason` is what the owner sees in
++   *  the alert: rain, operator, low fuel, mission end… */
++  | { action: 'return_to_base'; data?: { reason?: string } }
++  /** The raindrop sensor/edge or an operator reports rain. chrserver runs the
++   *  whole rain sequence: pump OFF, robot returns to base, owner numbers warned. */
++  | { action: 'report_rain'; data?: { source?: 'sensor' | 'operator' | 'firmware'; rainPercent?: number } }
++  /** Petrol ran out: the report goes to every saved owner number so somebody can
++   *  bring fuel instead of finding the rover stranded later. */
++  | { action: 'report_fuel_empty'; data?: { note?: string; runMinutes?: number } }
+   | { action: 'manual_teleop'; data: { enabled: boolean } }
+   | { action: 'change_mode'; data: { mode: RoverMode } }
+   | { action: 'deploy_mission'; data: MissionRequest }
+@@ -95,7 +103,9 @@ export type ControlAction =
+   | { action: 'pump_on'; data?: { durationSeconds?: number; blockId?: string } }
+   | { action: 'pump_off' }
+   | { action: 'pump_auto'; data: { enabled: boolean } }
+-  | { action: 'set_irrigation_threshold'; data: { moisturePercent: number } }
++  /** Per-well threshold: the probe lives on the pump, so a farm with more than
++   *  one well sets a value per pump/block instead of one global number. */
++  | { action: 'set_irrigation_threshold'; data: { moisturePercent: number; pumpId?: string; blockId?: string } }
+   | { action: 'irrigate_block'; data: { blockId: string; durationSeconds?: number } }
+   | { action: 'stop_irrigation' };
+ 

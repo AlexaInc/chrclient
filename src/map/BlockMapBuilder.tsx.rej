@@ -1,0 +1,164 @@
+diff a/src/map/BlockMapBuilder.tsx b/src/map/BlockMapBuilder.tsx	(rejected hunks)
+@@ -102,7 +102,7 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+     return (
+       <Card className="mt-4">
+         <SectionTitle>FIELD BLOCK MAP</SectionTitle>
+-        <Text className="text-xs text-slate-500 mt-2">
++        <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+           No field map has been saved yet. Create one to start marking crop blocks for the robot to patrol.
+         </Text>
+         <TextInput
+@@ -110,7 +110,7 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+           onChangeText={setNewMapName}
+           placeholder="Field name (e.g. Field A)"
+           placeholderTextColor={colors.slate400}
+-          className="border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-900 mt-3 bg-white"
++          className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-[13px] text-slate-900 dark:text-slate-100 mt-3 bg-white dark:bg-slate-900"
+         />
+         <TouchableOpacity
+           onPress={createMap}
+@@ -132,11 +132,11 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+         <SectionTitle>FIELD BLOCK MAP — PLANT PER BLOCK</SectionTitle>
+         <Badge
+           label={drawing ? 'DRAW MODE' : `${map.blocks.length} BLOCKS`}
+-          className={drawing ? 'bg-amber-100' : 'bg-brand-50'}
+-          textClassName={drawing ? 'text-amber-700' : 'text-brand-700'}
++          className={drawing ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-brand-50 dark:bg-brand-900/40'}
++          textClassName={drawing ? 'text-amber-700 dark:text-amber-300' : 'text-brand-700 dark:text-brand-300'}
+         />
+       </Row>
+-      <Text className="text-[10px] text-slate-500 mt-1">
++      <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+         Each block is mapped to its plant — the AI analysis model is switched automatically per block.
+       </Text>
+ 
+@@ -159,7 +159,7 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+ 
+       {drawing ? (
+         <View className="mt-3">
+-          <Text className="text-[11px] font-bold text-slate-600">
++          <Text className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+             Tap the map to add corners ({draft.length} points) — 3+ points needed.
+           </Text>
+           <TextInput
+@@ -167,25 +167,25 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+             onChangeText={setBlockName}
+             placeholder="Block name (e.g. Block D)"
+             placeholderTextColor={colors.slate400}
+-            className="border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-900 mt-2 bg-white"
++            className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-[13px] text-slate-900 dark:text-slate-100 mt-2 bg-white dark:bg-slate-900"
+           />
+           <Row className="gap-2 mt-2">
+             <TextInput value={rowSpacing} onChangeText={setRowSpacing} keyboardType="decimal-pad"
+-              placeholder="Row m" className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-[12px] bg-white" />
++              placeholder="Row m" className="flex-1 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-[12px] bg-white dark:bg-slate-900" />
+             <TextInput value={scanSpacing} onChangeText={setScanSpacing} keyboardType="decimal-pad"
+-              placeholder="Photo m" className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-[12px] bg-white" />
++              placeholder="Photo m" className="flex-1 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-[12px] bg-white dark:bg-slate-900" />
+           </Row>
+-          <Text className="text-[10px] text-slate-500 mt-1">Row spacing (m) and distance between left/right photo stops (m).</Text>
++          <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Row spacing (m) and distance between left/right photo stops (m).</Text>
+           <Row className="gap-1.5 mt-2 flex-wrap">
+             {PLANT_MODELS.map((p, i) => (
+               <TouchableOpacity
+                 key={p.plant}
+                 onPress={() => setPlantIdx(i)}
+                 activeOpacity={0.8}
+-                className={`px-3 py-1.5 rounded-full border ${plantIdx === i ? 'border-transparent' : 'border-slate-200 bg-white'}`}
++                className={`px-3 py-1.5 rounded-full border ${plantIdx === i ? 'border-transparent' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}
+                 style={plantIdx === i ? { backgroundColor: p.color } : undefined}
+               >
+-                <Text className={`text-[11px] font-extrabold ${plantIdx === i ? 'text-white' : 'text-slate-600'}`}>
++                <Text className={`text-[11px] font-extrabold ${plantIdx === i ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+                   {p.plant}
+                 </Text>
+               </TouchableOpacity>
+@@ -206,10 +206,10 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+             <TouchableOpacity
+               onPress={() => { setDraft([]); setDrawing(false); }}
+               activeOpacity={0.85}
+-              className="flex-1 flex-row items-center justify-center border-[1.5px] border-slate-300 rounded-xl py-2.5"
++              className="flex-1 flex-row items-center justify-center border-[1.5px] border-slate-300 dark:border-slate-600 rounded-xl py-2.5"
+             >
+               <Feather name="x" size={15} color={colors.slate500} />
+-              <Text className="text-xs font-extrabold text-slate-600 ml-1.5">Cancel</Text>
++              <Text className="text-xs font-extrabold text-slate-600 dark:text-slate-300 ml-1.5">Cancel</Text>
+             </TouchableOpacity>
+           </Row>
+         </View>
+@@ -227,9 +227,9 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+       {/* Always-visible patrol deployment — previously this only appeared after
+           tapping a block polygon on the map, so operators couldn't find it. */}
+       {!drawing && map.blocks.length > 0 && (
+-        <View className="bg-brand-50 border border-brand-200 rounded-xl p-3 mt-3">
++        <View className="bg-brand-50 dark:bg-brand-900/40 border border-brand-200 dark:border-brand-700 rounded-xl p-3 mt-3">
+           <SectionTitle>DEPLOY AUTONOMOUS PATROL</SectionTitle>
+-          <Text className="text-[10px] text-slate-500 mt-1">
++          <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+             Pick the blocks to patrol (tap to queue) — or deploy all blocks. Tap a block
+             polygon on the map above to edit its spacing or remove it.
+           </Text>
+@@ -240,17 +240,17 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+                 onPress={() => toggleQueued(b.id)}
+                 activeOpacity={0.8}
+                 className={`px-3 py-1.5 rounded-full border ${
+-                  queuedIds.includes(b.id) ? 'bg-brand-600 border-brand-600' : 'bg-white border-slate-300'
++                  queuedIds.includes(b.id) ? 'bg-brand-600 border-brand-600' : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600'
+                 }`}
+               >
+-                <Text className={`text-[11px] font-extrabold ${queuedIds.includes(b.id) ? 'text-white' : 'text-slate-600'}`}>
++                <Text className={`text-[11px] font-extrabold ${queuedIds.includes(b.id) ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+                   {b.name} ({b.plant})
+                 </Text>
+               </TouchableOpacity>
+             ))}
+           </Row>
+           {queuedIds.length > 0 && (
+-            <Text className="text-[10px] font-bold text-slate-600 mt-2">
++            <Text className="text-[10px] font-bold text-slate-600 dark:text-slate-300 mt-2">
+               Route: {queuedIds.map((id) => map.blocks.find((b) => b.id === id)?.name ?? id).join(' → ')}
+             </Text>
+           )}
+@@ -274,11 +274,11 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+       )}
+ 
+       {selected && !drawing && (
+-        <View className="bg-slate-50 border border-slate-200 rounded-xl p-3 mt-3">
++        <View className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 mt-3">
+           <Row className="justify-between">
+             <View>
+-              <Text className="text-[13px] font-extrabold text-slate-900">{selected.name}</Text>
+-              <Text className="text-[11px] font-bold text-slate-500 mt-0.5">
++              <Text className="text-[13px] font-extrabold text-slate-900 dark:text-slate-100">{selected.name}</Text>
++              <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+                 Plant: {selected.plant} • AI model: {selected.aiModel ?? 'default'}
+               </Text>
+             </View>
+@@ -288,20 +288,20 @@ export default function BlockMapBuilder({ height = 300 }: Props) {
+           </Row>
+           <Row className="gap-2 mt-3">
+             <TextInput value={rowSpacing} onChangeText={setRowSpacing} keyboardType="decimal-pad"
+-              placeholder="Row m" className="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-[11px] bg-white" />
++              placeholder="Row m" className="flex-1 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-[11px] bg-white dark:bg-slate-900" />
+             <TextInput value={scanSpacing} onChangeText={setScanSpacing} keyboardType="decimal-pad"
+-              placeholder="Photo m" className="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-[11px] bg-white" />
++              placeholder="Photo m" className="flex-1 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-[11px] bg-white dark:bg-slate-900" />
+             <TextInput value={arrivalRadius} onChangeText={setArrivalRadius} keyboardType="decimal-pad"
+-              placeholder="GPS m" className="flex-1 border border-slate-200 rounded-lg px-2 py-2 text-[11px] bg-white" />
++              placeholder="GPS m" className="flex-1 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-[11px] bg-white dark:bg-slate-900" />
+           </Row>
+-          <Text className="text-[10px] text-slate-500 mt-1">Row spacing • photo-stop spacing • GPS arrival tolerance (metres)</Text>
++          <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Row spacing • photo-stop spacing • GPS arrival tolerance (metres)</Text>
+           <TouchableOpacity onPress={() => toggleQueued(selected.id)}
+-            className={`border rounded-xl py-2 mt-2 ${queuedIds.includes(selected.id) ? 'bg-amber-50 border-amber-400' : 'bg-white border-slate-300'}`}>
+-            <Text className={`text-center text-xs font-extrabold ${queuedIds.includes(selected.id) ? 'text-amber-700' : 'text-slate-700'}`}>
++            className={`border rounded-xl py-2 mt-2 ${queuedIds.includes(selected.id) ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-400' : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600'}`}>
++            <Text className={`text-center text-xs font-extrabold ${queuedIds.includes(selected.id) ? 'text-amber-700 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
+               {queuedIds.includes(selected.id) ? 'REMOVE FROM PATROL QUEUE' : 'ADD TO PATROL QUEUE'}
+             </Text>
+           </TouchableOpacity>
+-          {queuedIds.length > 0 && <Text className="text-[10px] font-bold text-slate-600 mt-2">
++          {queuedIds.length > 0 && <Text className="text-[10px] font-bold text-slate-600 dark:text-slate-300 mt-2">
+             Queue ({queuedIds.length}): {queuedIds.map((id) => map.blocks.find((b) => b.id === id)?.name ?? id).join(' → ')}
+           </Text>}
+           <TouchableOpacity

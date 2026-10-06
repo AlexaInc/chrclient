@@ -1,0 +1,44 @@
+diff a/src/navigation/DrawerContent.tsx b/src/navigation/DrawerContent.tsx	(rejected hunks)
+@@ -6,6 +6,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
+ import { colors } from '../theme';
+ import { useRealtime } from '../realtime/RealtimeContext';
++import { AppLogo } from '../components/AppLoadingScreen';
+ 
+ const NAV_ITEMS: { key: string; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+   { key: 'Dashboard', label: 'Dashboard', icon: 'home' },
+@@ -30,11 +31,13 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
+   const unacknowledgedCount = alerts.filter((a) => !a.acknowledgedAt).length;
+ 
+   return (
+-    <View className="flex-1 bg-sidebar" style={{ paddingTop: insets.top + 8 }}>
++    <View className="flex-1 bg-sidebar dark:bg-slate-950" style={{ paddingTop: insets.top + 8 }}>
+       {/* Brand header */}
+       <View className="flex-row items-center px-6 py-5">
+-        <View className="w-11 h-11 rounded-2xl bg-white/10 border border-white/20 items-center justify-center">
+-          <MaterialCommunityIcons name="robot-outline" size={26} color={colors.emerald400} />
++        {/* same logo as the app icon, the loading screen and the top bar */}
++        <View className="w-11 h-11 rounded-2xl bg-white/10 border border-white/20 dark:bg-slate-900/70 dark:border-slate-700 items-center justify-center">
++          {/* Task 7: the drawer logo is the app logo, not a robot glyph */}
++          <AppLogo size={30} />
+         </View>
+         <View className="ml-3">
+           <Text className="text-white text-[17px] font-extrabold">AI CROP ROBOT</Text>
+@@ -86,7 +89,7 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
+                   {inner}
+                 </LinearGradient>
+               ) : (
+-                <View className="rounded-lg py-2.5 px-4">{inner}</View>
++                <View className="rounded-lg py-2.5 px-4 dark:bg-slate-800/60">{inner}</View>
+               )}
+             </TouchableOpacity>
+           );
+@@ -95,7 +98,7 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
+ 
+       {/* Bottom promo card */}
+       <View
+-        className="mx-4 bg-sidebar-card border border-sidebar-card-border rounded-2xl p-4"
++        className="mx-4 bg-sidebar-card border border-sidebar-card-border dark:bg-slate-800/70 dark:border-slate-700 rounded-2xl p-4"
+         style={{ marginBottom: insets.bottom + 16 }}
+       >
+         <MaterialCommunityIcons name="sprout" size={44} color={colors.green400} style={{ alignSelf: 'center' }} />
