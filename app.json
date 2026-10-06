@@ -15,7 +15,8 @@
     "android": {
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -32,6 +33,15 @@
     "backgroundColor": "#043622",
     "plugins": [
       "react-native-quick-crypto",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#16A34A",
+          "defaultChannel": "alerts",
+          "sounds": []
+        }
+      ],
       [
         "expo-location",
         {

@@ -1,7 +1,9 @@
 # chrclient — AI Crop Robot (Mobile / Client App)
 
-> 🚧 **Status: Work in progress.** This app is still being actively developed — screens,
-> features, and the server integration are evolving. Expect things to change.
+> ✅ **Status: in use.** Every item on the project list is built and running: live maps and
+> field mapping, robot and pump control, irrigation per well, WhatsApp operator control, app
+> updates, dark mode and phone notifications. The **[Manual](#manual--what-is-finished-and-how-to-use-it)**
+> below is the operator's guide to all of it — start there.
 
 Hi 👋 I'm **Hansaka.** This repository is the **client application** for our
 **AI Smart Crop Health Monitoring Robot** — a Year 1 / Semester 1 mini project for the module
@@ -28,7 +30,7 @@ over a REST API for login and a Socket.IO connection for live data and commands.
 - [Available Scripts](#available-scripts)
 - [Authentication Flow](#authentication-flow)
 - [Real-Time Messaging](#real-time-messaging)
-- [Roadmap](#roadmap)
+- [Manual — what is finished and how to use it](#manual--what-is-finished-and-how-to-use-it)
 - [Team & Credits](#team--credits)
 - [License & Usage](#license--usage)
 
@@ -365,18 +367,148 @@ The socket connects **only after a successful login**, using the auth token.
 
 ---
 
-## Roadmap
+## Manual — what is finished and how to use it
 
-Since this project is still ongoing, here's roughly what's done and what's next:
+Everything in this section is **done and running in the current build**. It is written the way
+you would hand the app to another operator: what to do, in what order, and what you should see.
+Nothing here needs code changes — where a step is one-time, it says so.
 
-- [x] App navigation, screens, and responsive layout
-- [x] Login flow with client-side hashing + demo mode
-- [x] Socket.IO connection to the backend
-- [ ] Wire every screen to live server/robot data
-- [ ] Full AI-scan results view
-- [ ] Persist session/token across app restarts
-- [ ] Push notifications for alerts
-- [ ] Polish, testing, and final evaluation
+### 1. First run on a phone (5 minutes)
+
+1. Install the APK from the newest **GitHub release** (`latest`), or open the web build that
+   chrserver serves from its own `public/` folder.
+2. Log in with the operator account (or **`demo` / `demo`** to look around with no robot —
+   the app then shows a *DEMO DATA* badge and never talks to the server).
+3. **Settings → NOTIFICATIONS** → the alert switch is ON on a fresh install. Press
+   **Register this phone**, then **Send test notification**. The test must appear in the phone's
+   own notification bar — see *§6 Notifications* for the one-time Firebase step that makes them
+   arrive with the app closed.
+4. **Settings → DISPLAY & APP**: pick **DARK MODE** if the phone sits on the rover, and leave
+   *Show dots on graphs* OFF (the smooth line is the default view).
+5. **Settings → MAP STYLE**: SATELLITE is the default. Change it to STREETS or TERRAIN from here
+   or from the buttons on any map — all four maps follow the choice.
+
+### 2. The map
+
+* **Zoom is free.** Pinch, or use `+` / `−` on the map, down to the whole island and up to
+  street level (the imagery upscales past zoom 19 instead of going blank).
+* **Which tiles**: satellite imagery by default (Esri World Imagery with place labels),
+  OpenStreetMap for streets, OpenTopoMap for terrain contours.
+* **No robot connected?** The map still opens — on the field position
+  `7.489087449264883, 80.36537714662697` with the note *DEFAULT POSITION • ROBOT OFFLINE*.
+  An empty grey map means the phone has no tiles (no data); the position stays live.
+* **`◎`** re-centres on the rover, **`⤢`** opens the map full-screen (the same live map, not a
+  screenshot), and the row of chips switches provider without leaving the screen.
+* The rover's dot is coloured by GPS accuracy (green ≤ 15 m, amber ≤ 30 m, red beyond, with the
+  `±Nm` figure beside it), and the recent GPS trail is drawn behind it.
+
+### 3. Mapping a crop block (mapping screen)
+
+1. Open **Mapping**. Mark the block either by **walking it with the phone** (PHONE WALK — the map
+   centres on the phone by itself, and every few metres a point is recorded; the dashed line is
+   your trace) or by **driving the rover** and tapping the map, or by typing coordinates.
+2. Points are only accepted when the reading is good enough (accuracy gate 25 m); the screen says
+   why a tap was refused instead of silently dropping it.
+3. Press **STOP / SAVE**. The block is stored with its **stop points**, and those stop points are
+   reused the next time the block is re-mapped — you do not re-walk them.
+4. **FULL SCREEN** gives you the whole screen for marking; **CENTRE ON ME / ROBOT** switches what
+   the map follows.
+
+### 4. Driving the robot safely
+
+* The **Controller** screen always shows the live map, the three ultrasonic distances (front,
+  left, right — the side beams mark their bracket angle separately) and the speed the rover is
+  really using.
+* Nothing can be driven faster than the firmware's own ceiling: the Settings sliders only make
+  the rover **slower**. Drive 70 % / turn 65 % is the fresh-install default because the rover
+  works between closely planted crops.
+* Side-sensor bracket angles default to **35°** (the angle the brackets are bolted at). After
+  re-bolting a bracket you change this number in Settings — nothing to re-flash.
+* **Auto-avoid** (ON by default) steers around a plant and creeps past; with it off the rover
+  brakes at the safety distance. A blue banner tells you a manoeuvre is running, red one of the
+  two self-protection stops (`no-path`, `emergency`), amber the dead-man failsafe — so you always
+  know *why* the rover stopped.
+* **Rain** (≥ 60 %, with hysteresis) → the pump is switched off, the rover returns to base, every
+  owner number is alerted, and the petrol-empty state is reported in the same alert.
+* **Petrol empty** blocks a new mission until it is refilled (`POST /api/safety/fuel-refilled`).
+
+### 5. Irrigation (per well)
+
+* The robot has **no soil-moisture sensor** — every moisture reading comes from the **water pump**
+  (ESP32-C3). The app says so on the screen, so nobody goes looking for a sensor that is not there.
+* Each well has its **own AUTO MOISTURE THRESHOLD**; the fleet value in Settings is only the
+  fallback for a well that has never been given one.
+* **Pump ON** has an adjustable run time, default **60 s**, and stops by itself.
+
+### 6. Notifications (push to the phone)
+
+The phone gets its own notification for the events that matter — rain, petrol empty, emergency
+stop, drive failsafe, robot offline, GPS/field-map problems. They arrive while the app is open
+**and, once the one-time step below is done, while the app is closed**.
+
+* **Settings → NOTIFICATIONS** shows the exact state of this phone: *REGISTERED*, *ON (APP
+  RUNNING)*, *BLOCKED BY THE PHONE*, or *OFF*, and the reason whenever it is not simply “on”.
+* **WHAT SHOULD REACH THE PHONE** — pick the quietest level that still wakes you:
+  *Critical only* (rain, petrol, e-stop, failsafe), *Warnings & critical* (default), or
+  *Everything*.
+* The alert history in the app is not replayed as notifications: opening the app after a week
+  does not buzz the phone for last week's alerts.
+* **One-time step for notifications while the app is closed** (Android needs Firebase; the app
+  itself is already wired for it):
+  1. Create a Firebase project and add an Android app with package `com.hansaka01.aicroprobot`.
+  2. Put `google-services.json` into the repository as the secret
+     **`GOOGLE_SERVICES_JSON_BASE64`** (base64 of that file) — the release workflow writes it into
+     the build automatically; without the secret the build still succeeds and notifications stay
+     in-app only.
+  3. In Firebase → Project settings → **Service accounts**, create a key and upload it to
+     **Expo → Credentials → Android → FCM V1 service account key**.
+  4. Build once (push the repository), install, then **Settings → NOTIFICATIONS → Send test
+     notification**. If the test arrives with the app closed, everything is wired.
+* The server side is already in place: `POST /api/push/register`, `GET /api/push`,
+  `POST /api/push/test`, `POST /api/push/unregister` (see the chrserver README). `PUSH_ENABLED=false`
+  on the server switches all of it off without touching the phones.
+
+### 7. WhatsApp operator control
+
+* **Settings → WHATSAPP SERVICE** links the bot to the operator's number, shows the session state
+  (*LINKED* / *PAIRING* / *INVALID*), and can delete the session or re-link another number.
+* **Owner numbers**: add them one by one with **Add another number** — up to 10, each with the
+  country code. They are stored in the database and every one of them is alerted (and can command)
+  the bot.
+* Commands use **buttons that follow the live state** (pump ON/OFF and mission start/stop swap
+  with what the robot is actually doing) — never a fixed pair.
+* Every bot message carries the footer **Powered by hazu@AlexaInc.github.io** in the message
+  footer itself, not pasted into the text.
+
+### 8. App updates
+
+* Every app start compares its build stamp with the newest GitHub release.
+* **Android**: the new APK downloads and asks for the install confirmation. If the phone refuses
+  the “install unknown apps” permission, the app raises a **new version available** notice instead
+  — there is no silent hole in the update path.
+* **iPhone / web**: a notice with the release link, because those platforms cannot self-install.
+* **Settings → DISPLAY & APP** shows *installed version*, *newest release*, *last checked*, and the
+  reason for any failure.
+
+### 9. Maintenance checklist
+
+| When | What to do |
+| --- | --- |
+| A new build is released | Nothing — Android phones update themselves, others show the notice. |
+| You move the robot to a new field | Mapping screen → re-map the block (stop points are reused), save; the rover pulls the new map from the SD cache. |
+| You re-bolt a sensor bracket | Settings → the matching *Sensor Angle* (°), save. No re-flash. |
+| The rover drives too close to plants | Lower *Robot Drive Speed* (Settings). It can only go slower, never faster. |
+| Alerts stop reaching a phone | Settings → NOTIFICATIONS: read the state. *BLOCKED* → allow notifications in the phone settings; *ON (APP RUNNING)* → the Firebase step in §6 is still missing. |
+| A new phone is added for the family | Log in on it, then Settings → NOTIFICATIONS → **Register this phone** (up to 20 phones are kept; the least recently used is dropped). |
+| WhatsApp bot stops answering | Settings → WHATSAPP SERVICE → the state badge, then **Delete session** and link again. |
+| The server stops serving the web app | chrserver fetches the newest chrclient web build at start; restart it once with the release available. |
+
+### Still open (honest list)
+
+- The **one-time Firebase secret** in §6 is the only piece of phone notifications that needs an
+  account, not a device: everything up to it is already built.
+- **Account / family delete** has no working implementation yet (the app has no delete-account
+  call and the server has no route for it). Everything else on the project list is finished.
 
 ---
 

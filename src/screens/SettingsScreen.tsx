@@ -30,6 +30,9 @@ import {
 import { FleetConfig } from '../types/actions';
 import { MAP_PROVIDERS } from '../map/leafletHtml';
 import { describeAvoidState } from '../scripts/robotMotion';
+import { usePush } from '../notifications/PushContext';
+import { BACKGROUND_PUSH_SETUP, PUSH_SEVERITIES, severityHint, severityLabel } from '../notifications/pushPlan';
+import { Linking, Platform } from 'react-native';
 
 const DEFAULT_CONFIG: FleetConfig = {
   rowSpacingM: 1, scanSpacingM: 1, arrivalRadiusM: 2,
@@ -236,6 +239,9 @@ export default function SettingsScreen() {
           </Text>
         </TouchableOpacity>
         <ActionFeedback result={apply.result} className="self-center" />
+
+        {/* Phone notifications — permission, registration, test button */}
+        <NotificationsCard />
 
         {/* Display, theme and app updates */}
         <DisplayAndAppCard />
@@ -938,6 +944,224 @@ function DisplayAndAppCard() {
           </TouchableOpacity>
         </Row>
       </View>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Notifications card                                                  */
+/* ------------------------------------------------------------------ */
+
+const PUSH_TONE: Record<string, { className: string; textClassName: string }> = {
+  ok: { className: 'bg-brand-50 dark:bg-brand-900/40', textClassName: 'text-brand-700 dark:text-brand-300' },
+  warn: { className: 'bg-amber-100 dark:bg-amber-900/40', textClassName: 'text-amber-700 dark:text-amber-300' },
+  bad: { className: 'bg-rose-100 dark:bg-rose-900/40', textClassName: 'text-rose-700 dark:text-rose-400' },
+  muted: { className: 'bg-slate-100 dark:bg-slate-800', textClassName: 'text-slate-500 dark:text-slate-400' },
+};
+
+/**
+ * Phone notifications (push).
+ *
+ * The operator asked for the phone itself to be told about rain, low petrol,
+ * the robot going offline and the other safety events — the in-app alert list is
+ * not enough, because nobody stares at a phone in the field.
+ *
+ * This card is deliberately blunt about the state of the phone: registered /
+ * local-only / blocked, and what to do about it. The five-step Firebase setup
+ * (needed only so a notification also arrives when the app is CLOSED) is printed
+ * here, because it is a server/account task the app cannot do by itself.
+ */
+function NotificationsCard() {
+  const {
+    supported, permission, token, tokenError, server, status,
+    enable, refresh, test, forget, registering,
+  } = usePush();
+  const { pushEnabled, setPushEnabled, pushSeverity, setPushSeverity } = usePreferences();
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
+  const tone = PUSH_TONE[status.tone] ?? PUSH_TONE.muted;
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="mt-4">
+      <Row className="justify-between">
+        <SectionTitle>NOTIFICATIONS</SectionTitle>
+        <Badge label={status.label} className={tone.className} textClassName={tone.textClassName} />
+      </Row>
+      <Text className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-[17px]">
+        Rain, empty petrol tank, emergency stop, drive failsafe, the robot going offline — these are pushed to this
+        phone&apos;s own notification bar, not only shown inside the app. The phone only gets what is worth waking up
+        for; everything is still listed under Alerts.
+      </Text>
+      <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 leading-4">{status.detail}</Text>
+
+      <Row className="justify-between mt-3">
+        <View className="flex-1 pr-3">
+          <Text className="text-[13px] font-extrabold text-slate-800 dark:text-slate-100">Alert notifications</Text>
+          <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-4">
+            Master switch for this phone. ON by default on a fresh install.
+          </Text>
+        </View>
+        <Switch
+          value={pushEnabled}
+          onValueChange={(value) => {
+            setPushEnabled(value);
+            if (value) void run(() => enable());
+          }}
+          trackColor={{ false: colors.slate300, true: colors.emerald500 }}
+          thumbColor={colors.white}
+        />
+      </Row>
+
+      {/* How loud the phone gets: the severity floor */}
+      <View className="mt-3 border border-slate-200 dark:border-slate-700 rounded-xl p-3">
+        <Text className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200">WHAT SHOULD REACH THE PHONE</Text>
+        <Row className="gap-2 mt-2 flex-wrap">
+          {PUSH_SEVERITIES.map((severity) => (
+            <TouchableOpacity
+              key={severity}
+              onPress={() => setPushSeverity(severity)}
+              activeOpacity={0.85}
+              className={`px-3 py-2 rounded-xl border ${
+                pushSeverity === severity
+                  ? 'bg-brand-600 border-brand-600'
+                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900'
+              }`}
+            >
+              <Text className={`text-[11px] font-extrabold ${pushSeverity === severity ? 'text-white' : 'text-slate-700 dark:text-slate-200'}`}>
+                {severityLabel(severity)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </Row>
+        <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5">{severityHint(pushSeverity)}</Text>
+      </View>
+
+      {/* Server side */}
+      <Row className="justify-between mt-3">
+        <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Registered phones</Text>
+        <Text className="text-[12px] font-extrabold text-slate-800 dark:text-slate-100">
+          {server ? `${server.activeDevices} of ${server.deviceCount}` : '—'}
+        </Text>
+      </Row>
+      <Row className="justify-between mt-1.5">
+        <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Last push sent</Text>
+        <Text className="text-[12px] font-extrabold text-slate-800 dark:text-slate-100">
+          {server?.lastSentAt ? formatWhen(server.lastSentAt) : 'not yet'}
+        </Text>
+      </Row>
+      <Row className="justify-between mt-1.5">
+        <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400">This phone</Text>
+        <Text className="text-[12px] font-extrabold text-slate-800 dark:text-slate-100">
+          {token ? 'REGISTERED' : supported ? 'NOT REGISTERED' : 'NO MODULE'}
+        </Text>
+      </Row>
+      {tokenError ? (
+        <Text className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 leading-4">{tokenError}</Text>
+      ) : null}
+      {server?.lastError ? (
+        <Text className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 leading-4">Last push problem: {server.lastError}</Text>
+      ) : null}
+
+      <Row className="gap-2 mt-3 flex-wrap">
+        <TouchableOpacity
+          onPress={() => void run(() => enable())}
+          disabled={busy || registering}
+          activeOpacity={0.85}
+          className={`bg-brand-600 rounded-xl py-3 px-4 items-center justify-center ${busy || registering ? 'opacity-60' : ''}`}
+        >
+          <Text className="text-[12px] font-extrabold text-white">
+            {registering ? 'Registering…' : token ? 'Re-register this phone' : 'Register this phone'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => void run(async () => {
+            const result = await test();
+            setFeedback({ ok: result.ok, text: result.message });
+          })}
+          disabled={busy}
+          activeOpacity={0.85}
+          className={`border border-brand-300 dark:border-brand-600 bg-white dark:bg-slate-900 rounded-xl py-3 px-4 items-center justify-center ${busy ? 'opacity-60' : ''}`}
+        >
+          <Text className="text-[12px] font-extrabold text-brand-700 dark:text-brand-300">Send test notification</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => void run(async () => {
+            await refresh();
+            setFeedback({ ok: true, text: 'Status refreshed from the server.' });
+          })}
+          disabled={busy}
+          activeOpacity={0.85}
+          className="border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-xl py-3 px-4 items-center justify-center"
+        >
+          <Text className="text-[12px] font-extrabold text-slate-700 dark:text-slate-200">Refresh status</Text>
+        </TouchableOpacity>
+        {token ? (
+          <TouchableOpacity
+            onPress={() => void run(async () => {
+              await forget();
+              setFeedback({ ok: true, text: 'This phone was removed and notifications are switched off.' });
+            })}
+            disabled={busy}
+            activeOpacity={0.85}
+            className="border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-xl py-3 px-4 items-center justify-center"
+          >
+            <Text className="text-[12px] font-extrabold text-slate-700 dark:text-slate-200">Stop this phone</Text>
+          </TouchableOpacity>
+        ) : null}
+      </Row>
+
+      {feedback ? (
+        <Text className={`text-[10px] mt-2 leading-4 ${feedback.ok ? 'text-brand-700 dark:text-brand-300' : 'text-amber-600 dark:text-amber-400'}`}>
+          {feedback.text}
+        </Text>
+      ) : null}
+
+      {permission === 'denied' && Platform.OS !== 'web' ? (
+        <TouchableOpacity
+          onPress={() => void Linking.openSettings().catch(() => {})}
+          activeOpacity={0.85}
+          className="mt-3 bg-amber-500 rounded-xl py-3 items-center justify-center"
+        >
+          <Text className="text-[12px] font-extrabold text-white">Open the phone&apos;s notification settings</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {/* The one-time server/Firebase setup, for notifications while the app is closed */}
+      <TouchableOpacity
+        onPress={() => setShowSetup((v) => !v)}
+        activeOpacity={0.85}
+        className="mt-3 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5"
+      >
+        <Text className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200">
+          {showSetup ? '▾' : '▸'} Notifications when the app is CLOSED (one-time setup)
+        </Text>
+      </TouchableOpacity>
+      {showSetup ? (
+        <View className="mt-2">
+          <Text className="text-[10px] text-slate-500 dark:text-slate-400 leading-4">
+            While the app is open (or recently opened) every alert already appears on this phone. For notifications that
+            arrive with the app fully closed, the server needs a Firebase key — four steps, done once:
+          </Text>
+          {BACKGROUND_PUSH_SETUP.split('\n').map((line, index) => (
+            <Text key={index} className="text-[10px] text-slate-600 dark:text-slate-300 mt-1.5 leading-4">
+              {index + 1}. {line}
+            </Text>
+          ))}
+          <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 leading-4">
+            Everything else — the server side, the alert routing, the safety thresholds — is already in place.
+          </Text>
+        </View>
+      ) : null}
     </Card>
   );
 }

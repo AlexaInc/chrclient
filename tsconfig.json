@@ -9,6 +9,7 @@
     // The verification scripts run under tsx (node, not React Native) and use
     // node built-ins, so they are not part of the app typecheck.
     "chrclient-verify-task7.ts",
-    "chrclient-verify-map.ts"
+    "chrclient-verify-map.ts",
+    "chrclient-verify-push.ts"
   ]
 }

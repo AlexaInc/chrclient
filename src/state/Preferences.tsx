@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { useColorScheme } from 'nativewind';
 import { readPref, writePref } from './deviceStorage';
 import { DEFAULT_MAP_PROVIDER, MapProvider, isMapProvider } from '../map/leafletHtml';
+import { DEFAULT_PUSH_SEVERITY, PushSeverity, isPushSeverity } from '../notifications/pushPlan';
 
 /**
  * Small set of display preferences that live on the device (not fleet settings).
@@ -14,6 +15,12 @@ import { DEFAULT_MAP_PROVIDER, MapProvider, isMapProvider } from '../map/leaflet
  *  mapProvider — which tiles every live map draws. SATELLITE by default, because
  *              the operator maps crop blocks: the road map was a cartoon next to
  *              the imagery. Changeable from Settings and from the map itself.
+ *  pushEnabled — master switch for phone notifications (Settings → NOTIFICATIONS).
+ *              ON by default: the operator asked for the phone to be told about
+ *              rain / petrol / offline events, so a fresh install asks for the
+ *              permission instead of waiting to be discovered.
+ *  pushSeverity — the quietest level that still reaches the phone, default
+ *              “warnings & critical”. Informational entries stay in the app.
  */
 export interface Preferences {
   graphDots: boolean;
@@ -24,11 +31,18 @@ export interface Preferences {
   toggleDarkMode: () => void;
   mapProvider: MapProvider;
   setMapProvider: (value: MapProvider) => void;
+  pushEnabled: boolean;
+  setPushEnabled: (value: boolean) => void;
+  togglePushEnabled: () => void;
+  pushSeverity: PushSeverity;
+  setPushSeverity: (value: PushSeverity) => void;
 }
 
 const KEY_GRAPH_DOTS = 'chrclient.prefs.graphDots';
 const KEY_DARK_MODE = 'chrclient.prefs.darkMode';
 const KEY_MAP_PROVIDER = 'chrclient.prefs.mapProvider';
+const KEY_PUSH_ENABLED = 'chrclient.prefs.pushEnabled';
+const KEY_PUSH_SEVERITY = 'chrclient.prefs.pushSeverity';
 
 const PreferencesContext = createContext<Preferences | undefined>(undefined);
 
@@ -45,6 +59,11 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   const [mapProvider, setMapProviderState] = useState<MapProvider>(() => {
     const saved = readPref(KEY_MAP_PROVIDER);
     return isMapProvider(saved) ? saved : DEFAULT_MAP_PROVIDER;
+  });
+  const [pushEnabled, setPushEnabledState] = useState<boolean>(() => boolFromStorage(KEY_PUSH_ENABLED, true));
+  const [pushSeverity, setPushSeverityState] = useState<PushSeverity>(() => {
+    const saved = readPref(KEY_PUSH_SEVERITY);
+    return isPushSeverity(saved) ? saved : DEFAULT_PUSH_SEVERITY;
   });
   const colorScheme = useColorScheme();
 
@@ -77,13 +96,27 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     writePref(KEY_MAP_PROVIDER, value);
   }, []);
 
+  const setPushEnabled = useCallback((value: boolean) => {
+    setPushEnabledState(value);
+    writePref(KEY_PUSH_ENABLED, value ? '1' : '0');
+  }, []);
+
+  const togglePushEnabled = useCallback(() => setPushEnabled(!pushEnabled), [pushEnabled, setPushEnabled]);
+
+  const setPushSeverity = useCallback((value: PushSeverity) => {
+    setPushSeverityState(isPushSeverity(value) ? value : DEFAULT_PUSH_SEVERITY);
+    writePref(KEY_PUSH_SEVERITY, value);
+  }, []);
+
   const value = useMemo<Preferences>(
     () => ({
       graphDots, setGraphDots, toggleGraphDots,
       darkMode, setDarkMode, toggleDarkMode,
       mapProvider, setMapProvider,
+      pushEnabled, setPushEnabled, togglePushEnabled,
+      pushSeverity, setPushSeverity,
     }),
-    [graphDots, setGraphDots, toggleGraphDots, darkMode, setDarkMode, toggleDarkMode, mapProvider, setMapProvider]
+    [graphDots, setGraphDots, toggleGraphDots, darkMode, setDarkMode, toggleDarkMode, mapProvider, setMapProvider, pushEnabled, setPushEnabled, togglePushEnabled, pushSeverity, setPushSeverity]
   );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;

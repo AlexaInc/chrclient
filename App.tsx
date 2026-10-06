@@ -27,6 +27,8 @@ import { DESKTOP_BP } from './src/components/ui';
 import { AuthProvider } from './src/auth/AuthContext';
 import LoginModal from './src/auth/LoginModal';
 import { RealtimeProvider } from './src/realtime/RealtimeContext';
+import { PushProvider } from './src/notifications/PushContext';
+import { NotificationsBridge } from './src/notifications/NotificationsBridge';
 import AppLoadingScreen from './src/components/AppLoadingScreen';
 import { PreferencesProvider, usePreferences } from './src/state/Preferences';
 import { UpdateProvider } from './src/state/Update';
@@ -133,11 +135,17 @@ export default function App() {
             <SafeAreaProvider>
               <PreferencesProvider>
                 <AuthProvider>
+                  {/* Phone notifications: lives under Auth (it needs the session
+                      token to register this device) and above Realtime (it
+                      watches the live alerts and puts them on the lock screen). */}
+                  <PushProvider>
                     <RealtimeProvider>
+                      <NotificationsBridge />
                       <UpdateProvider>
                         <AppTree />
                       </UpdateProvider>
                     </RealtimeProvider>
+                  </PushProvider>
                     <LoginModal />
                 </AuthProvider>
               </PreferencesProvider>

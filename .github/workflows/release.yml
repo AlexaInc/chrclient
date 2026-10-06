@@ -275,9 +275,30 @@ jobs:
           echo "EXPO_PUBLIC_BUILD_TIME=${{ steps.buildstamp.outputs.epoch }}" >> "$GITHUB_ENV"
           echo "EXPO_PUBLIC_BUILD_ID=${{ needs.prepare.outputs.version }}" >> "$GITHUB_ENV"
 
+      # Phone notifications that arrive while the app is CLOSED need Firebase on
+      # Android: prebuild only wires Firebase in when google-services.json is in
+      # the project, so the file is dropped in here from a repository secret.
+      # Without the secret the build still works — the app just shows the alert
+      # in its own notification bar while it is running, and Settings says what
+      # is missing.
+      - name: Add google-services.json when the secret is set (push notifications)
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
+            echo "No GOOGLE_SERVICES_JSON_BASE64 secret — building without Firebase."
+            echo "Alerts still reach the phone while the app is open (see README → Notifications)."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > google-services.json
+          node -e "const j=require('./google-services.json');const p=(j.client||[]).flatMap(c=>(c.client_info||{}).android_client_info?[c.client_info.android_client_info.package_name]:[]);const want=require('./app.json').expo.android.package;if(!p.includes(want)){console.error('google-services.json does not contain the Android package '+want+' — check the Firebase app.');process.exit(1);}console.log('google-services.json accepted for '+want);"
+
       - name: Generate the native Android project
         env:
           CI: "1"
+        # prebuild copies google-services.json into android/app/ and turns on the
+        # google-services gradle plugin when that file is present
         run: npx expo prebuild --platform android --no-install
 
       - name: Decode your release keystore (skipped when no secret is set)

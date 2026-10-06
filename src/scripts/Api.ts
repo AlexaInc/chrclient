@@ -120,6 +120,58 @@ export const fetchReports = (token: string) => authedGet<{ ok: boolean; reports:
  *  token as `?token=` for these two export routes specifically, since a
  *  native "open in browser" / share-sheet action can't send an
  *  Authorization header. */
+/* ------------------------------------------------------------------ */
+/* Push notifications (phone alerts)                                   */
+/* ------------------------------------------------------------------ */
+
+export interface PushDeviceDto {
+  /** masked on purpose: the app never needs the full token back */
+  token: string;
+  platform: string;
+  label?: string;
+  addedAt: number;
+  lastSeenAt: number;
+  disabledReason?: string;
+}
+
+export interface PushStatusDto {
+  enabled: boolean;
+  url: string;
+  minSeverity: string;
+  deviceCount: number;
+  activeDevices: number;
+  sent: number;
+  failed: number;
+  lastSentAt: number | null;
+  lastError: string | null;
+  deviceList?: PushDeviceDto[];
+}
+
+/** Tell chrserver which phone to notify. Called on every app start. */
+export async function registerPushDevice(
+  device: { token: string; platform: string; label?: string },
+  sessionToken: string,
+): Promise<{ ok: boolean; devices: number }> {
+  return authedPost<{ ok: boolean; devices: number }>('/api/push/register', sessionToken, device);
+}
+
+/** Stop notifying this phone (Settings → notifications off, or log-out). */
+export async function unregisterPushDevice(token: string, sessionToken: string): Promise<{ ok: boolean; devices: number }> {
+  return authedPost<{ ok: boolean; devices: number }>('/api/push/unregister', sessionToken, { token });
+}
+
+export async function fetchPushStatus(sessionToken: string): Promise<PushStatusDto> {
+  const out = await authedGet<{ ok: boolean; push: PushStatusDto }>('/api/push', sessionToken);
+  return out.push;
+}
+
+export async function sendPushTest(
+  sessionToken: string,
+  text?: string,
+): Promise<{ ok: boolean; sent: number; failed: number; reason?: string }> {
+  return authedPost<{ ok: boolean; sent: number; failed: number; reason?: string }>('/api/push/test', sessionToken, { text });
+}
+
 export const reportExportUrl = (id: number, token: string) => `${SERVER_URL}/api/reports/${id}/export.csv?token=${encodeURIComponent(token)}`;
 export const cropsExportUrl = (token: string) => `${SERVER_URL}/api/crops/export.csv?token=${encodeURIComponent(token)}`;
 
