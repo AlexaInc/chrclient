@@ -8,11 +8,11 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from './AuthContext';
 import { colors } from '../theme';
+import { AppLogo } from '../components/AppLoadingScreen';
 
 
 export default function LoginModal() {
@@ -39,12 +39,8 @@ export default function LoginModal() {
             {/* Brand */}
             <View className="items-center mb-5">
               <View className="w-16 h-16 rounded-2xl bg-white border border-slate-200 items-center justify-center overflow-hidden">
-                <Image
-                  source={require('../../assets/images/chr-logo.png')}
-                  style={{ width: 56, height: 56 }}
-                  resizeMode="contain"
-                  accessibilityLabel="CropHealth Robot logo"
-                />
+                {/* same logo the navbar and the loading screen use */}
+                <AppLogo size={56} />
               </View>
               <Text className="text-lg font-extrabold text-slate-900 mt-3">AI CROP ROBOT</Text>
               <Text className="text-[11px] font-semibold text-slate-400 mt-0.5">

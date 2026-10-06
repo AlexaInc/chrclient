@@ -24,12 +24,29 @@
     },
     "backgroundColor": "#043622",
     "plugins": [
-      "react-native-quick-crypto"
+      "react-native-quick-crypto",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#043622",
+          "dark": {
+            "backgroundColor": "#022c22"
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
         "projectId": "815631e2-9085-418b-a268-785b53273930"
       }
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#043622"
     }
   }
 }

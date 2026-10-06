@@ -1,7 +1,8 @@
 import 'react-native-gesture-handler';
 import './global.css';
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
@@ -26,16 +27,48 @@ import { DESKTOP_BP } from './src/components/ui';
 import { AuthProvider } from './src/auth/AuthContext';
 import LoginModal from './src/auth/LoginModal';
 import { RealtimeProvider } from './src/realtime/RealtimeContext';
+import AppLoadingScreen from './src/components/AppLoadingScreen';
 
 const Drawer = createDrawerNavigator();
+
+// Keep the native splash (assets/splash-icon.png, the app icon) up until our
+// own animated loading screen has painted — that way the launch goes
+// native splash → branded loading screen, with no flash of a blank window.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+const hideNativeSplash = () => {
+  SplashScreen.hideAsync().catch(() => {});
+};
+
+/** How long the branded loading screen stays before the app shows through. */
+const BOOT_MS = 1100;
 
 export default function App() {
     const { width } = useWindowDimensions();
     const isDesktop = width >= DESKTOP_BP;
+    const [booted, setBooted] = useState(false);
+
+    useEffect(() => {
+      if (booted) return;
+      const t = setTimeout(() => setBooted(true), BOOT_MS);
+      return () => clearTimeout(t);
+    }, [booted]);
+
+    // the loading screen is on screen: swap the native splash for it
+    const onLoadingPainted = useCallback(() => hideNativeSplash(), []);
+
+    if (!booted) {
+      return (
+        // the same flex root as the main tree, so the loading screen fills the
+        // window on every platform (web included)
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <AppLoadingScreen label="Starting up…" onPainted={onLoadingPainted} />
+        </GestureHandlerRootView>
+      );
+    }
 
 
     return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <GestureHandlerRootView style={{ flex: 1 }} onLayout={hideNativeSplash}>
             <SafeAreaProvider>
                 <AuthProvider>
                     <RealtimeProvider>
