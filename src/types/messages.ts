@@ -25,6 +25,59 @@ export interface LocationMessage {
  *  patrol waypoint stop). */
 export type RobotState = 'offline' | 'patrolling' | 'idle' | 'fault';
 
+/** Speed limits: what the operator asked for (Settings) next to what the rover
+ *  reported it is really using. The firmware clamps every value against its own
+ *  hard ceiling, so drivePwm can never exceed hardMaxPwm. */
+export interface MotionStatus {
+  driveSpeedPercent: number;
+  turnSpeedPercent: number;
+  drivePwm?: number;
+  turnPwm?: number;
+  /** Duty cycle the motors are on right now (drops when the rover slows to a
+   *  crawl near a plant, and to 0 when it stops). */
+  appliedPwm?: number;
+  /** Compile-time ceiling in the firmware — nothing may drive above this. */
+  hardMaxPwm?: number;
+  intent?: string;
+  source?: string;
+  /** Why the rover is not doing what was last asked: "failsafe" (no fresh
+   *  command), "obstacle" (safety distance, assist off), "plant-left" /
+   *  "plant-right" / "plant-ahead" (it is going AROUND one), "no-path" or
+   *  "emergency". */
+  blockedBy?: string;
+  obstacleStopCm?: number;
+  /** Absolute emergency line of the front-arc planner (cm). */
+  emergencyStopCm?: number;
+  /** Front-arc geometry the rover is really using (set from this screen). */
+  sensorAngleLeftDeg?: number;
+  sensorAngleRightDeg?: number;
+  avoidAssist?: boolean;
+  /** What the arc planner is doing right now: clear | steer-left | steer-right
+   *  | creep | turn-back | no-path | emergency. */
+  avoidState?: string;
+  /** -1 steering left, +1 steering right, 0 straight/blocked. */
+  avoidDir?: number;
+  /** Lateral room each side beam proves (cm) — the gap it can pass through. */
+  gapLeftCm?: number;
+  gapRightCm?: number;
+  /** Centre distance the manoeuvre was decided on (cm). */
+  frontCm?: number;
+  reportedAt?: number;
+}
+
+/** Field-map cache state: the server's revision vs the revision the rover has
+ *  stored on its SD card (reported in device_hello / map_status). */
+export interface FieldMapSyncStatus {
+  serverRev?: string;
+  robotRev?: string;
+  inSync: boolean;
+  blocks?: number;
+  bytes?: number;
+  sd?: boolean;
+  lastSaveReason?: string;
+  updatedAt?: number;
+}
+
 export interface StatusMessage {
   state: RobotState;
   mode: 'autonomous' | 'manual';
@@ -33,6 +86,8 @@ export interface StatusMessage {
   totalWaypoints?: number;
   progress?: number;
   message?: string;
+  motion?: MotionStatus;
+  fieldMap?: FieldMapSyncStatus;
 }
 
 /** Type: "sensors" — sanitized rover sensor snapshot. The rover's onboard

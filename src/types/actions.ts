@@ -49,6 +49,23 @@ export interface FleetConfig {
   arrivalRadiusM: number;
   irrigationThresholdPercent: number;
   diseaseAlertThreshold: number;
+  /** Drive speed as a percentage of the safe cruise speed built into the rover
+   *  firmware. The firmware treats it as a LIMIT (100 % == 110 of 255 PWM duty,
+   *  with a compile-time ceiling above that), so this can only slow the rover
+   *  down - never speed it up. */
+  driveSpeedPercent: number;
+  /** In-place turn speed, same scale as driveSpeedPercent. */
+  turnSpeedPercent: number;
+  /** How far outwards the LEFT ultrasonic bracket points its sensor, in
+   *  degrees from straight ahead (0-80). The rover converts every reading on
+   *  that beam with this angle to work out how wide the gap on that side is,
+   *  so it must match the bracket that is actually bolted on. */
+  sensorAngleLeftDeg: number;
+  /** Mounting angle of the RIGHT ultrasonic bracket, same scale. */
+  sensorAngleRightDeg: number;
+  /** ON: a held manual drive command is steered around a plant instead of
+   *  being stopped by the safety distance (autonomous mode always avoids). */
+  avoidAssist: boolean;
 }
 
 export type ControlAction =

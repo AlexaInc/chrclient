@@ -134,11 +134,17 @@ interpret `Message`:
 { "Type": "battery",   "Message": { "level": 82, "solarWatts": 94, "minutesRemaining": 255 } }
 { "Type": "status",    "Message": { "state": "patrolling", "mode": "Autonomous Weeding", "currentRow": 14, "totalRows": 18 } }
 { "Type": "sensors",   "Message": { "soilMoisture": 62, "temperature": 28, "cropHealth": 87, "pestAlerts": 2 } }
+{ "Type": "motion_config", "Message": { "reason": "avoiding", "avoidState": "steer-right", "avoidDir": 1,
+    "blockedBy": "plant-left", "gapLeftCm": 20, "gapRightCm": 48, "frontCm": 26, "appliedPwm": 61,
+    "driveSpeedPercent": 70, "turnSpeedPercent": 65, "sensorAngleLeftDeg": 45, "sensorAngleRightDeg": 45, "avoidAssist": true } }
 { "Type": "alert",     "Message": { "severity": "warning", "title": "Pest detected", "description": "Aphids in Block C" } }
 ```
 
 All envelope/payload TypeScript types live in `src/types/messages.ts`
-(`RealtimeEnvelope` discriminated union + `parseEnvelope()` validator).
+(`RealtimeEnvelope` discriminated union + `parseEnvelope()` validator); the
+avoidance sentences the screens show are built by
+`src/scripts/robotMotion.ts` (`describeAvoidState()`, `isAvoiding()`,
+`isStuck()`), so the Controller banner and the Settings report always agree.
 `src/realtime/RealtimeContext.tsx` subscribes once to `message.upsert`, reduces the
 envelopes into app-wide state, and screens consume it with the `useRealtime()` hook.
 
@@ -164,7 +170,7 @@ Actions the client sends (full types in `src/types/actions.ts`, `ControlAction` 
 | `start_patrol` / `pause_patrol` / `return_to_base` / `calibrate_gimbal` | — | Robot unit controls |
 | `manual_teleop` | `{ enabled }` | Robot unit controls |
 | `change_mode` | `{ mode: 'autonomous'\|'manual'\|'paused'\|'charging' }` | Robot operator mode |
-| `set_speed` | `{ speed }` | Settings |
+| `set_speed` | `{ percent }` or `{ driveSpeedPercent, turnSpeedPercent, sensorAngleLeftDeg, sensorAngleRightDeg, avoidAssist }` (speeds 0-100 %, angles 0-80°) | Settings → robot speed limits + front-arc geometry |
 | `deploy_mission` / `deploy_waypoint_mission` | `{ name?, blocks?, waypoints? }` | Robot / Location |
 | `camera_set_channel` | `{ channel: 'rgb'\|'nir'\|'ndvi'\|'thermal' }` | AI Scan |
 | `camera_set_zoom` | `{ zoom: '1x'\|'2x'\|'4x'\|'macro' }` | AI Scan |
@@ -176,7 +182,7 @@ Actions the client sends (full types in `src/types/actions.ts`, `ControlAction` 
 | `run_predictive_model` | `{ crop? }` | Analytics |
 | `register_crop_batch` | `{ crop, block?, plantedAt?, notes? }` | Crops |
 | `select_crop_source` | `{ crop }` | Crops sensor hub |
-| `apply_config` | `FleetConfig` (speed, clearance, RTB, spray, confidence…) | Settings |
+| `apply_config` | `FleetConfig` (patrol geometry, thresholds, **robot speed limits**, **front-arc angles + avoid assist**) | Settings |
 | `add_field_boundary` | — | Location |
 
 UI code never touches the socket directly for actions — everything goes through the
@@ -185,6 +191,45 @@ typed service `src/scripts/Commands.ts` (ack timeout 5 s, resolves
 (`src/hooks/useCommand.ts`) which provides pending state + auto-clearing ack feedback
 (`src/components/ActionFeedback.tsx`). In **demo mode** commands are acked locally, so
 every button works without a server.
+
+### Robot speed limits, front-arc sensors & SD field-map cache (Settings)
+
+`Settings → Fleet Configuration` now starts with the values that decide how the
+rover moves:
+
+* **Robot Drive Speed** and **Robot Turn Speed** — percentages of the safe
+  cruise/turn values compiled into the firmware. 100 % is the fastest the rover
+  is allowed to move; the firmware clamps every value against its own hard
+  ceiling, so the panel can only ever make it **slower**. Saving pushes
+  `apply_config` (stored server-side and forwarded to the rover as
+  `motion_config`); the SD-card copy on the rover means it keeps obeying the
+  limit after a reboot even while the server is unreachable.
+* **Left / Right Sensor Angle** (25-80°) — the angle the ultrasonic brackets are
+  really bolted at, measured outwards from straight ahead. The rover turns each
+  side reading into *"how wide is the gap on that side"* with this number, so
+  after re-bolting a bracket you only change this setting; there is nothing to
+  re-flash. With the side beams splayed outwards the three cones overlap, which
+  is what removes the blind spots at the front corners.
+* **Auto-avoid steering (manual driving)** — ON: holding a drive button at a
+  plant makes the rover steer around it and creep past instead of stopping at
+  the safety distance. OFF: it brakes at the safety distance and the operator
+  decides. Autonomous mode always avoids; it only stops when no side gap is wide
+  enough to pass.
+* Under the sliders the app echoes the rover's own report:
+  `Rover reports: 77 PWM drive · 62 PWM turn · hard ceiling 150 PWM`,
+  `Motors now at 44 PWM · arc ±45°/±45°`, plus a plain-language line while a
+  manoeuvre is running, e.g. *"Going around a plant — steering right (26 cm
+  ahead · gaps 20 cm left / 48 cm right)"*.
+* **Field map (SD cache)** — a third device-status card shows whether the rover
+  already holds the current map (`IN SYNC`) or needs it re-sent
+  (`NOT SYNCED`), using `status.fieldMap` (`serverRev` vs `robotRev`).
+* On the **Controller** screen the live *Speed limit* and *Front arc* rows show
+  what the rover is configured with next to the PWM it is using right now. A
+  blue banner reports a manoeuvre (going around a plant), a red one the only
+  self-protection stop that is left (`no-path` / `emergency`), an amber one the
+  dead-man failsafe — so the operator sees *why* the rover is doing what it is
+  doing instead of guessing. While a plant is close, the ultrasonic bars mark
+  the centre and the two angled side beams separately.
 
 ### Demo mode
 

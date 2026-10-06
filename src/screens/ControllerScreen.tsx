@@ -11,6 +11,7 @@ import { endManualPatrol, fetchManualPatrol, startManualPatrol } from '../script
 import { useCommand } from '../hooks/useCommand';
 import ActionFeedback from '../components/ActionFeedback';
 import { DriveDirection } from '../types/actions';
+import { describeAvoidState, isAvoiding, isStuck } from '../scripts/robotMotion';
 
 const REPEAT_MS = 250; // resend rate while a direction is held
 
@@ -22,13 +23,17 @@ const DIRS: { dir: DriveDirection; icon: keyof typeof Feather.glyphMap; key: str
 ];
 
 /** Sensor position labels — the rover has exactly 3 ultrasonic sensors
- *  (front/left/right), matching the server's `ultrasonic.distances_cm`
- *  array order. There is no 4th/5th sensor on this hardware build. */
-const SENSOR_LABELS = ['Front', 'Left', 'Right'];
+ *  (centre + the two bracket-mounted side ones), matching the server's
+ *  `ultrasonic.distances_cm` array order. The side sensors are splayed
+ *  outwards so the three beams overlap into one fan with no blind spot between
+ *  the centre beam and the corners. There is no 4th/5th sensor on this build. */
+const SENSOR_LABELS = ['Front', 'Left ±', 'Right ±'];
 
 export default function ControllerScreen() {
   const isDesktop = useIsDesktop();
   const { status, ultrasonic, currentBlock, fieldMap, isDemo, robotOnline } = useRealtime();
+  // Speed limits the rover is really applying (from the firmware's own report).
+  const motion = status?.motion;
   const { token } = useAuth();
   const [active, setActive] = useState<DriveDirection | null>(null);
   // Single source of truth: the server-broadcast status.mode (itself derived
@@ -126,6 +131,13 @@ export default function ControllerScreen() {
 
   const minDist = ultrasonic ? Math.min(...ultrasonic.distances_cm) : null;
   const obstacle = minDist != null && minDist < 30;
+  // The front-arc planner reports what it is doing; the rover is only supposed
+  // to STOP when no side gap is wide enough to drive around the plant.
+  const avoidLine = describeAvoidState(motion);
+  const avoiding = isAvoiding(motion);
+  const stuck = isStuck(motion);
+  const failsafe = motion?.blockedBy === 'failsafe';
+  const brakeOnlyStop = motion?.blockedBy === 'obstacle' && !avoidLine && !failsafe;
 
   const padBtn = (d: (typeof DIRS)[number]) => (
     <TouchableOpacity
@@ -236,6 +248,22 @@ export default function ControllerScreen() {
                 {currentBlock ? `${currentBlock.name} (${currentBlock.plant})` : '—'}
               </Text>
             </Row>
+            <Row className="justify-between mt-2.5">
+              <Text className="text-xs font-semibold text-slate-500">Speed limit</Text>
+              <Text className="text-xs font-extrabold text-slate-900">
+                {motion
+                  ? `${motion.driveSpeedPercent}% drive${motion.drivePwm != null ? ` (${motion.drivePwm} PWM)` : ''}${motion.appliedPwm != null ? ` · now ${motion.appliedPwm} PWM` : ''}`
+                  : '—'}
+              </Text>
+            </Row>
+            <Row className="justify-between mt-2.5">
+              <Text className="text-xs font-semibold text-slate-500">Front arc</Text>
+              <Text className="text-xs font-extrabold text-slate-900">
+                {motion?.sensorAngleLeftDeg != null
+                  ? `±${motion.sensorAngleLeftDeg}° / ±${motion.sensorAngleRightDeg}°${motion.avoidAssist === false ? ' · assist off' : ''}`
+                  : '—'}
+              </Text>
+            </Row>
 
             {/* Ultrasonic bars: 3 fixed sensors — front, left, right */}
             <Text className="text-[10px] font-extrabold text-slate-400 mt-4 tracking-wide">ULTRASONIC SENSORS (cm)</Text>
@@ -263,6 +291,41 @@ export default function ControllerScreen() {
             {obstacle && (
               <View className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mt-3">
                 <Text className="text-[11px] font-extrabold text-rose-600">⚠ Obstacle under 30 cm — drive carefully</Text>
+              </View>
+            )}
+            {avoidLine && !failsafe && (
+              <View className={`border rounded-lg px-3 py-2 mt-3 ${stuck ? 'bg-rose-50 border-rose-200' : 'bg-brand-50 border-brand-200'}`}>
+                <Text className={`text-[11px] font-extrabold ${stuck ? 'text-rose-600' : 'text-brand-700'}`}>
+                  {avoidLine}
+                </Text>
+                <Text className={`text-[10px] mt-0.5 ${stuck ? 'text-rose-600' : 'text-brand-700'}`}>
+                  {stuck
+                    ? 'Neither side gap is wider than the rover, so it stopped instead of pushing through the crop row. Clear the row or drive it back manually.'
+                    : avoiding
+                      ? 'The rover steers around the plant and picks the mission up again — no action needed.'
+                      : 'The rover is still working out a way past.'}
+                </Text>
+              </View>
+            )}
+            {failsafe && (
+              <View className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                <Text className="text-[11px] font-extrabold text-amber-700">
+                  Robot cut its motors — no fresh drive command arrived (failsafe)
+                </Text>
+                <Text className="text-[10px] text-amber-700 mt-0.5">
+                  The rover only moves again when a new drive command or a mission arrives.
+                </Text>
+              </View>
+            )}
+            {brakeOnlyStop && (
+              <View className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                <Text className="text-[11px] font-extrabold text-amber-700">
+                  Robot stopped itself: obstacle inside the safety distance ({motion?.obstacleStopCm ?? 30} cm)
+                </Text>
+                <Text className="text-[10px] text-amber-700 mt-0.5">
+                  Auto-avoid steering is off for manual driving — switch it on in Settings and the rover will steer
+                  around plants instead of stopping at them.
+                </Text>
               </View>
             )}
 

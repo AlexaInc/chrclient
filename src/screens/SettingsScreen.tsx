@@ -22,13 +22,28 @@ import {
   WhatsAppStatusDto,
 } from '../scripts/Api';
 import { FleetConfig } from '../types/actions';
+import { describeAvoidState } from '../scripts/robotMotion';
 
 const DEFAULT_CONFIG: FleetConfig = {
   rowSpacingM: 1, scanSpacingM: 1, arrivalRadiusM: 2,
   irrigationThresholdPercent: 35, diseaseAlertThreshold: 0.6,
+  // Fresh installs start deliberately slow: this rover drives between closely
+  // planted crops, so the operator raises the limit only if they need to.
+  driveSpeedPercent: 70, turnSpeedPercent: 65,
+  // Printed front mounts: the side sensors are splayed outwards so the three
+  // beams overlap into one fan with no blind spot at the corners.
+  sensorAngleLeftDeg: 45, sensorAngleRightDeg: 45, avoidAssist: true,
 };
 
-const FIELDS: { key: keyof FleetConfig; label: string; sub: string; min: number; max: number; step: number; unit: string; fmt?: (v: number) => string }[] = [
+/** Everything in FleetConfig except the on/off switch, so the steppers below
+ *  can treat every value as a number. */
+type NumericConfigKey = Exclude<keyof FleetConfig, 'avoidAssist'>;
+
+const FIELDS: { key: NumericConfigKey; label: string; sub: string; min: number; max: number; step: number; unit: string; fmt?: (v: number) => string }[] = [
+  { key: 'driveSpeedPercent', label: 'Robot Drive Speed', sub: 'Percentage of the safe cruise speed built into the firmware. 100 % is the fastest this rover may travel — it works between closely planted crops, so keep it low.', min: 20, max: 100, step: 5, unit: '%' },
+  { key: 'turnSpeedPercent', label: 'Robot Turn Speed', sub: 'In-place turning speed on the same scale. Lower values make the rover pivot more gently around plants.', min: 20, max: 100, step: 5, unit: '%' },
+  { key: 'sensorAngleLeftDeg', label: 'Left Sensor Angle', sub: 'How far OUTWARDS the left ultrasonic bracket points its sensor, measured from straight ahead. The rover turns every reading on that beam into "how wide is the gap on the left", so set this to the angle the bracket is really bolted at — a wrong angle makes it steer toward a plant.', min: 25, max: 80, step: 5, unit: '°' },
+  { key: 'sensorAngleRightDeg', label: 'Right Sensor Angle', sub: 'Same for the right bracket. With the two side beams splayed outwards the front arc covers the corners too, which is what removes the blind spots.', min: 25, max: 80, step: 5, unit: '°' },
   { key: 'rowSpacingM', label: 'Row Spacing', sub: 'Distance between crop rows used to plan patrol waypoints.', min: 0.3, max: 5, step: 0.1, unit: 'm' },
   { key: 'scanSpacingM', label: 'Scan Spacing', sub: 'Distance between photo-capture points along each row.', min: 0.3, max: 5, step: 0.1, unit: 'm' },
   { key: 'arrivalRadiusM', label: 'Waypoint Arrival Radius', sub: 'How close the robot must get to a waypoint (by GPS) to count it as reached.', min: 0.5, max: 10, step: 0.5, unit: 'm' },
@@ -37,7 +52,7 @@ const FIELDS: { key: keyof FleetConfig; label: string; sub: string; min: number;
 ];
 
 export default function SettingsScreen() {
-  const { fleetConfig, robotOnline, pumpOnline, isDemo } = useRealtime();
+  const { fleetConfig, robotOnline, pumpOnline, isDemo, status } = useRealtime();
   const { token } = useAuth();
   const [config, setConfig] = useState<FleetConfig>(fleetConfig ?? DEFAULT_CONFIG);
   const apply = useCommand(applyFleetConfig);
@@ -51,7 +66,7 @@ export default function SettingsScreen() {
     fetchConfig(token).then((res) => setConfig(res.config)).catch((e) => console.warn('[Settings] config fetch failed:', e?.message ?? e));
   }, [isDemo, token, fleetConfig]);
 
-  const step = (key: keyof FleetConfig, dir: 1 | -1) => {
+  const step = (key: NumericConfigKey, dir: 1 | -1) => {
     const f = FIELDS.find((f) => f.key === key)!;
     setConfig((c) => ({ ...c, [key]: Math.min(f.max, Math.max(f.min, +(c[key] + dir * f.step).toFixed(2))) }));
   };
@@ -63,6 +78,17 @@ export default function SettingsScreen() {
       note: robotOnline ? 'Reporting sensors normally' : 'No recent messages',
       iconBg: robotOnline ? 'bg-brand-100' : 'bg-slate-100',
       icon: <MaterialCommunityIcons name="robot-outline" size={18} color={robotOnline ? colors.emerald600 : colors.slate400} />,
+    },
+    {
+      label: 'FIELD MAP (SD CACHE)',
+      value: status?.fieldMap?.serverRev
+        ? (status.fieldMap.inSync ? 'IN SYNC' : 'NOT SYNCED')
+        : 'NO MAP',
+      note: status?.fieldMap?.serverRev
+        ? `Server ${status.fieldMap.serverRev} · rover ${status.fieldMap.robotRev ?? 'unknown'}${status.fieldMap.sd ? ' · SD' : status.fieldMap.robotRev ? '' : ' · no SD'}`
+        : 'Save a field map to send it to the rover once',
+      iconBg: status?.fieldMap?.inSync ? 'bg-brand-100' : 'bg-amber-100',
+      icon: <Feather name="hard-drive" size={18} color={status?.fieldMap?.inSync ? colors.emerald600 : '#b45309'} />,
     },
     {
       label: 'IRRIGATION PUMP (ESP32-C3)',
@@ -79,7 +105,9 @@ export default function SettingsScreen() {
       <Page>
         <Text className="text-[22px] font-extrabold text-slate-900">Fleet Configuration</Text>
         <Text className="text-xs text-slate-500 mt-1.5 leading-[18px]">
-          Patrol geometry, waypoint arrival tolerance, irrigation threshold, and AI disease alert sensitivity.
+          Robot speed limits (the rover can never be driven faster than the firmware's own ceiling),
+          the front-arc sensor angles of the brackets, patrol geometry, waypoint arrival tolerance,
+          irrigation threshold, and AI disease alert sensitivity.
           These values are pushed to the robot/pump on save.
         </Text>
 
@@ -103,9 +131,31 @@ export default function SettingsScreen() {
 
         <Card className="mt-4">
           <Row className="justify-between">
-            <SectionTitle>PATROL & MISSION PARAMETERS</SectionTitle>
+            <SectionTitle>SPEED LIMITS, PATROL & MISSION PARAMETERS</SectionTitle>
             <Badge label="Pushed to robot on save" className="bg-brand-50" textClassName="text-brand-700" />
           </Row>
+
+          {status?.motion?.drivePwm != null && (
+            <View className="mb-4 rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+              <Text className="text-[11px] font-bold text-slate-600">
+                Rover reports: {status.motion.drivePwm} PWM drive · {status.motion.turnPwm} PWM turn
+                {status.motion.hardMaxPwm ? ` · hard ceiling ${status.motion.hardMaxPwm} PWM` : ''}
+              </Text>
+              <Text className="text-[11px] text-slate-500 mt-0.5">
+                {status.motion.appliedPwm != null ? `Motors now at ${status.motion.appliedPwm} PWM` : 'Motors idle'}
+                {status.motion.blockedBy ? ` · ${status.motion.blockedBy}` : ''}
+                {status.motion.obstacleStopCm ? ` · safety distance ${status.motion.obstacleStopCm} cm` : ''}
+                {status.motion.sensorAngleLeftDeg != null
+                  ? ` · arc ±${status.motion.sensorAngleLeftDeg}/±${status.motion.sensorAngleRightDeg}°`
+                  : ''}
+              </Text>
+              {describeAvoidState(status.motion) && (
+                <Text className="text-[11px] font-bold text-amber-700 mt-0.5">
+                  {describeAvoidState(status.motion)}
+                </Text>
+              )}
+            </View>
+          )}
 
           {FIELDS.map((f, i) => {
             const value = config[f.key];
@@ -144,6 +194,23 @@ export default function SettingsScreen() {
               </View>
             );
           })}
+
+          <View className="h-px bg-slate-100 my-4" />
+          <Row className="justify-between">
+            <View className="flex-1 pr-3">
+              <Text className="text-[13px] font-extrabold text-slate-800">Auto-avoid steering (manual driving)</Text>
+              <Text className="text-[11px] text-slate-500 mt-1 leading-4">
+                ON: when you hold a drive button and a plant is in the way, the rover steers around it and creeps past
+                instead of stopping at the safety distance. OFF: it brakes at the safety distance and you decide where
+                it goes. In autonomous mode the rover always goes around - it only stops when no side gap is wide enough.
+              </Text>
+            </View>
+            <Switch
+              value={config.avoidAssist}
+              onValueChange={(v) => setConfig((c) => ({ ...c, avoidAssist: v }))}
+              disabled={isDemo}
+            />
+          </Row>
         </Card>
 
         {/* Save */}
