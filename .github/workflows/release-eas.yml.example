@@ -2,13 +2,20 @@
 #  OPTIONAL. Delete the ".example" from this file name to switch it on.
 #
 #  The normal release.yml builds everything on GitHub's machines for free and
-#  needs no account anywhere. This second workflow is for the other route:
-#  Expo's EAS Build servers (which can also hand you a signed .ipa for a real
-#  iPhone, and a store-ready .aab). It needs
-#    1. an Expo account, and
+#  needs no account anywhere. This second workflow is the other route: Expo's
+#  EAS Build servers do the compiling, and the finished file is downloaded and
+#  attached to the SAME release the normal workflow uses (so the Releases page
+#  keeps one tidy set of assets either way).
+#
+#  Use it when
+#   * the local Android/gradle build keeps failing on a runner, or
+#   * you want a properly signed .ipa / store-ready .aab.
+#
+#  It needs
+#    1. an Expo account (free) — run `npx eas-cli login` once on your computer,
 #    2. a repository secret EXPO_TOKEN
-#       (expo.dev → Account settings → Access tokens → create token)
-#  Both are documented in GITHUB_ACTIONS_GUIDE.md §8.
+#       (expo.dev → Account settings → Access tokens → create token).
+#  Both are documented in GITHUB_ACTIONS_GUIDE.md §9.
 # ---------------------------------------------------------------------------
 name: EAS Build (optional)
 
@@ -18,20 +25,29 @@ on:
       platform:
         description: "Which app(s) to build on EAS"
         required: true
-        default: all
+        default: android
         type: choice
-        options: [all, android, ios]
+        options: [android, ios, all]
       profile:
         description: "eas.json profile"
         required: true
-        default: production
+        default: preview
         type: choice
         options: [development, preview, production]
+      release_tag:
+        description: "Attach the file to this release tag (default: latest)"
+        required: false
+        default: latest
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   eas:
     name: EAS · ${{ inputs.platform }} / ${{ inputs.profile }}
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -48,21 +64,65 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Queue the EAS build
+      - name: Build on the EAS servers (this waits for the build)
+        id: eas
         env:
           EXPO_NO_TELEMETRY: "1"
         run: |
+          set -euo pipefail
           eas build \
             --platform "${{ inputs.platform }}" \
             --profile "${{ inputs.profile }}" \
-            --non-interactive --no-wait
+            --non-interactive --wait --json > "$RUNNER_TEMP/eas.json" || {
+              echo "::error::eas build failed - the log above says why (queue, credentials or a build error)"
+              exit 1
+            }
+          node -e '
+            const runs = require(process.env.RUNNER_TEMP + "/eas.json");
+            const fs = require("fs");
+            const list = Array.isArray(runs) ? runs : [runs];
+            const lines = [];
+            for (const r of list) {
+              const a = r.artifacts || {};
+              const url = a.applicationArchiveUrl || a.buildUrl;
+              if (url) lines.push(`${r.platform}|${url}`);
+            }
+            fs.writeFileSync(process.env.RUNNER_TEMP + "/eas-files.txt", lines.join("\n") + "\n");
+            console.log(lines.join("\n"));
+          '
 
-      - name: Where to watch / download it
+      - name: Download the finished files
+        run: |
+          set -euo pipefail
+          while IFS='|' read -r PLATFORM URL; do
+            case "$PLATFORM" in
+              android) NAME="chrclient-android.apk" ;;
+              ios)     NAME="chrclient-ios.ipa" ;;
+              *)       NAME="chrclient-${PLATFORM}" ;;
+            esac
+            echo "downloading $PLATFORM → $NAME"
+            curl -L --fail --retry 3 -o "$NAME" "$URL"
+          done < "$RUNNER_TEMP/eas-files.txt"
+          ls -lh chrclient-*
+
+      - name: Attach them to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_tag }} · EAS
+          fail_on_unmatched_files: false
+          files: |
+            chrclient-android*.apk
+            chrclient-ios*.ipa
+
+      - name: Where it came from
+        if: always()
         run: |
           {
-            echo "### EAS build queued"
+            echo "### EAS build"
             echo ""
-            echo "Progress and the download link: https://expo.dev/accounts/$(npx eas-cli whoami)/projects/ai-crop-robot/builds"
+            echo "Platform: \`${{ inputs.platform }}\` · profile: \`${{ inputs.profile }}\`"
+            echo "Attached to release: \`${{ inputs.release_tag }}\`"
             echo ""
-            echo "(\`--no-wait\` was used: Expo keeps building after this job ends.)"
+            echo "Full history: https://expo.dev/accounts/$(npx eas-cli whoami 2>/dev/null || echo your-account)/projects/ai-crop-robot/builds"
           } >> "$GITHUB_STEP_SUMMARY"

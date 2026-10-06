@@ -4,8 +4,9 @@
 #  Push to main / master  → Web + Android + iOS, published as the rolling
 #                           "latest" pre-release (its assets are replaced on
 #                           every run, so the newest build is always there).
-#  Push a tag (v1.0.1)    → the same three builds as a normal versioned release.
-#  Run workflow button    → same as a push; fill "release_tag" to version it.
+#  Push a tag (v1.0.1)    → the same builds as a normal versioned release.
+#  Run workflow button    → pick one platform to iterate fast (default: all),
+#                           optionally with a version tag.
 #
 #  No secret is required:
 #   * the APK is signed with the debug keystore the project already ships
@@ -14,6 +15,20 @@
 #     that Sideloadly / AltStore can sign with your Apple ID.
 #  Optional settings (server URL, GitHub Pages, EAS) are in
 #  GITHUB_ACTIONS_GUIDE.md.
+#
+#  Changes in this revision (after the first CI run):
+#   * the android-actions/setup-android step is GONE — GitHub's ubuntu runners
+#     already ship a licensed Android SDK; that step only re-downloaded
+#     cmdline-tools and re-accepted licences (minutes of nothing),
+#   * the APK is built for arm64-v8a only (every modern phone) — a quarter of
+#     the native compiling, far less disk and memory, much faster,
+#   * gradle is told to use more heap and no daemon, and local.properties is
+#     written from $ANDROID_HOME,
+#   * a failing build now prints the real error into the run summary and
+#     uploads the full gradle log, instead of leaving you guessing,
+#   * "Run workflow" can build a single platform (much quicker to test),
+#   * the publish step always runs, so whatever did build still lands in the
+#     release even when another platform fails.
 # ---------------------------------------------------------------------------
 name: Build & Release
 
@@ -23,6 +38,12 @@ on:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
+      platforms:
+        description: "Which platform(s) to build"
+        required: true
+        default: all
+        type: choice
+        options: [all, android, ios, web]
       release_tag:
         description: "Publish under this version tag (e.g. v1.0.1). Empty = rolling latest build."
         required: false
@@ -42,19 +63,25 @@ env:
   # Baked into the JS bundle at build time (src/config.ts reads it).
   # Override with a repository variable named EXPO_PUBLIC_SERVER_URL.
   EXPO_PUBLIC_SERVER_URL: ${{ vars.EXPO_PUBLIC_SERVER_URL || 'https://crophealth.dpdns.org' }}
+  # ABI(s) in the APK. arm64-v8a covers every phone from ~2016 on and builds
+  # ~4x faster with far less disk than all four. Old 32-bit phone? set this to
+  # "armeabi-v7a,arm64-v8a" (slower build, bigger APK). Emulator: add x86_64.
+  ANDROID_ABI: "arm64-v8a"
 
 jobs:
   # -------------------------------------------------------------------------
-  # 1 · work out the version + the tag the release will live under
+  # 1 · work out the version, the release tag and what to build
   # -------------------------------------------------------------------------
   prepare:
     name: 1 · Version
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       tag: ${{ steps.v.outputs.tag }}
       version: ${{ steps.v.outputs.version }}
       version_code: ${{ steps.v.outputs.version_code }}
       rolling: ${{ steps.v.outputs.rolling }}
+      platforms: ${{ steps.v.outputs.platforms }}
     steps:
       - uses: actions/checkout@v4
 
@@ -65,6 +92,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           RUN_NUMBER: ${{ github.run_number }}
           MANUAL_TAG: ${{ github.event.inputs.release_tag || '' }}
+          MANUAL_PLATFORMS: ${{ github.event.inputs.platforms || 'all' }}
         run: |
           set -euo pipefail
           if [ "$REF_TYPE" = "tag" ]; then
@@ -88,6 +116,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "version_code=$RUN_NUMBER" >> "$GITHUB_OUTPUT"   # monotonic
           echo "rolling=$ROLLING" >> "$GITHUB_OUTPUT"
+          echo "platforms=$MANUAL_PLATFORMS" >> "$GITHUB_OUTPUT"
 
           {
             echo "### Building \`$TAG\`"
@@ -96,6 +125,7 @@ jobs:
             echo "|---|---|"
             echo "| Version | \`$VERSION\` |"
             echo "| Android versionCode | \`$RUN_NUMBER\` |"
+            echo "| Platforms | \`$MANUAL_PLATFORMS\` |"
             echo "| Release | \`$TAG\`$([ "$ROLLING" = "true" ] && echo ' (rolling, assets replaced)' || echo '') |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -104,8 +134,9 @@ jobs:
   # -------------------------------------------------------------------------
   web:
     name: 2 · Web
-    runs-on: ubuntu-latest
     needs: prepare
+    if: needs.prepare.result == 'success' && (needs.prepare.outputs.platforms == 'all' || contains(needs.prepare.outputs.platforms, 'web'))
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -145,7 +176,7 @@ jobs:
           cp dist/index.html dist/404.html      # refreshes on static hosts
           # A versioned release keeps the version in the file name; the rolling
           # "latest" release uses stable names so each run replaces the assets
-          # instead of piling up one APK/zip per push.
+          # instead of piling up one zip per push.
           NAME="chrclient-web"
           if [ "$ROLLING" = "false" ]; then NAME="${NAME}-${VERSION}"; fi
           (cd dist && zip -qry "../${NAME}.zip" .)
@@ -170,30 +201,45 @@ jobs:
 
   # -------------------------------------------------------------------------
   # 3 · android — release APK
+  #     No Android SDK setup step: ubuntu-latest already has a licensed SDK,
+  #     and AGP fetches anything else it needs by itself.
   # -------------------------------------------------------------------------
   android:
     name: 3 · Android
-    runs-on: ubuntu-latest
     needs: prepare
-    timeout-minutes: 60
+    if: needs.prepare.result == 'success' && (needs.prepare.outputs.platforms == 'all' || contains(needs.prepare.outputs.platforms, 'android'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
     env:
-      # Empty unless the four secrets are set (see GITHUB_ACTIONS_GUIDE.md §5)
+      # Empty unless the four secrets are set (see GITHUB_ACTIONS_GUIDE.md §6)
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Make room and show the disk
+        run: |
+          set -euo pipefail
+          # The runner image ships an emulator + system images nobody needs for
+          # a gradle build; deleting them frees ~6 GB, which is what usually
+          # runs out on React Native + NDK builds.
+          sudo rm -rf "$ANDROID_HOME/emulator" "$ANDROID_HOME/system-images" \
+                      "$ANDROID_HOME/ndk-bundle" /usr/local/lib/android/sdk/emulator 2>/dev/null || true
+          df -h / /home/runner 2>/dev/null || df -h /
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+          ls "$ANDROID_HOME/ndk" 2>/dev/null || true
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -219,35 +265,103 @@ jobs:
       - name: Point the release build at that keystore (falls back to the debug key)
         run: node .github/scripts/patch-gradle-signing.js
 
+      - name: Make gradle comfortable
+        run: |
+          set -euo pipefail
+          # More heap than the template's 2 GB (React Native codegen is hungry)
+          # and no daemon, so a stuck daemon cannot hang the job.
+          printf '\n# --- added for CI ---\norg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8\norg.gradle.daemon=false\norg.gradle.caching=true\n' >> android/gradle.properties
+          if [ -n "${ANDROID_HOME:-}" ]; then
+            printf 'sdk.dir=%s\n' "$ANDROID_HOME" > android/local.properties
+          fi
+          chmod +x android/gradlew
+          grep -E "jvmargs|daemon=|parallel=" android/gradle.properties || true
+          cat android/local.properties 2>/dev/null || true
+
       - name: Build the release APK
         env:
+          ABI: ${{ env.ANDROID_ABI }}
           CHR_RELEASE_STORE_FILE: ${{ runner.temp }}/release.keystore
           CHR_RELEASE_STORE_PASSWORD: ${{ env.ANDROID_KEYSTORE_PASSWORD }}
           CHR_RELEASE_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
           CHR_RELEASE_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          cd android
-          ./gradlew assembleRelease --stacktrace
+          GRADLE_ARGS="-PreactNativeArchitectures=$ABI --no-daemon --stacktrace"
+          echo "gradle $GRADLE_ARGS"
+          attempt=1
+          while true; do
+            echo "::group::gradle assembleRelease (attempt $attempt)"
+            if (cd android && ./gradlew assembleRelease $GRADLE_ARGS 2>&1 | tee "$GITHUB_WORKSPACE/gradle-build.log"); then
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -ge 2 ]; then
+              echo "::error::gradle assembleRelease failed twice - see gradle-build.log (uploaded as an artifact) and the summary below"
+              exit 1
+            fi
+            echo "::warning::attempt 1 failed - retrying once (the SDK/NDK download is flaky now and then)"
+            attempt=2
+          done
+
+      - name: Show the end of the build log in the run summary
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "### Android build log (last 40 lines)"
+            echo ""
+            echo '```'
+            tail -n 40 gradle-build.log 2>/dev/null || echo "(no log)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the log when the build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-gradle-log
+          path: gradle-build.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Point at the real error
+        if: failure()
+        run: |
+          {
+            echo ""
+            echo "**Android failed.** The last lines above are the real error from gradle."
+            echo "Common ones: \`No space left on device\` (runner disk),"
+            echo "\`Execution failed for task ':app:...'\` (a gradle report is in the"
+            echo "\`android-gradle-log\` artifact), or a timeout."
+            echo "Quick fix to try: Actions → this workflow → Run workflow → platforms: **android**."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Name the APK (version in the name only for tagged releases)
+        if: success()
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           ROLLING: ${{ needs.prepare.outputs.rolling }}
         run: |
           set -euo pipefail
-          APK="$(find android/app/build/outputs/apk/release -name '*.apk' | head -n1)"
-          [ -n "$APK" ] || { echo "::error::no APK was produced"; exit 1; }
+          APK="$(find android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -n1 || true)"
+          if [ -z "$APK" ]; then
+            echo "::error::gradle finished but left no APK in android/app/build/outputs/apk/release"
+            tail -n 20 gradle-build.log 2>/dev/null || true
+            exit 1
+          fi
           NAME="chrclient-android.apk"
           if [ "$ROLLING" = "false" ]; then NAME="chrclient-android-${VERSION}.apk"; fi
           cp "$APK" "$NAME"
           ls -lh "$NAME"
           {
             echo ""
-            echo "APK: \`$NAME\` (version \`$VERSION\`, versionCode \`${{ needs.prepare.outputs.version_code }}\`)"
+            echo "APK: \`$NAME\` (version \`$VERSION\`, versionCode \`${{ needs.prepare.outputs.version_code }}\`, ABI \`${{ env.ANDROID_ABI }}\`)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: android-apk
           path: chrclient-android*.apk
@@ -260,12 +374,14 @@ jobs:
   # -------------------------------------------------------------------------
   ios:
     name: 4 · iOS
-    runs-on: macos-latest
     needs: prepare
+    if: needs.prepare.result == 'success' && (needs.prepare.outputs.platforms == 'all' || contains(needs.prepare.outputs.platforms, 'ios'))
+    runs-on: macos-latest
     timeout-minutes: 90
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -280,14 +396,17 @@ jobs:
           APP_VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
         run: node .github/scripts/bump-version.js
 
-      - name: Generate the native iOS project + pods
+      - name: Generate the native iOS project
         env:
           CI: "1"
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
         run: |
           set -euo pipefail
-          npx expo prebuild --platform ios --no-install
-          cd ios
-          pod install
+          sudo gem install cocoapods --no-document || true
+          pod --version
+          npx pod-install ios || (cd ios && pod install)
 
       - name: Build for the Simulator
         run: |
@@ -347,7 +466,8 @@ jobs:
           retention-days: 30
 
   # -------------------------------------------------------------------------
-  # 5 · publish — every file that was built lands in one release
+  # 5 · publish — runs even when a platform failed, so whatever did build
+  #     still shows up on the Releases page
   # -------------------------------------------------------------------------
   release:
     name: 5 · Publish
@@ -355,8 +475,10 @@ jobs:
     timeout-minutes: 15
     needs: [prepare, web, android, ios]
     if: always() && needs.prepare.result == 'success'
+    permissions:
+      contents: write
     steps:
-      - name: Collect the build output
+      - name: Collect whatever was built
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -369,6 +491,14 @@ jobs:
         run: |
           set -euo pipefail
           if ! ls chrclient-* >/dev/null 2>&1; then
+            {
+              echo "## Nothing to publish"
+              echo ""
+              echo "Every platform job failed, so there is nothing to upload."
+              echo "Open the red job above, look at its **Android build log / xcodebuild**"
+              echo "section (the error is in the last lines), then re-run just that"
+              echo "platform: Actions → Build & Release → Run workflow → platforms."
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "::error::no build output at all - nothing to publish"
             exit 1
           fi
@@ -393,6 +523,8 @@ jobs:
             | `chrclient-ios*.ipa` | iOS device app, **unsigned** — load it into Sideloadly / AltStore to sign it with your Apple ID. |
 
             Server URL baked into these builds: `${{ vars.EXPO_PUBLIC_SERVER_URL || 'https://crophealth.dpdns.org' }}`
+
+            Platform results for this run: web `${{ needs.web.result }}` · android `${{ needs.android.result }}` · ios `${{ needs.ios.result }}`
           files: |
             chrclient-android*.apk
             chrclient-web*.zip
@@ -406,7 +538,7 @@ jobs:
             echo ""
             echo "### Platform results"
             echo ""
-            echo "| Platform | Job |"
+            echo "| Platform | Result |"
             echo "|---|---|"
             echo "| Web | ${{ needs.web.result }} |"
             echo "| Android | ${{ needs.android.result }} |"
